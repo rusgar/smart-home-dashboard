@@ -20,8 +20,8 @@
   <button class="btn-play" id="btnPlay" onclick="togglePlay()">▶ Iniciar día</button>
   <button class="btn-reset" onclick="resetAll()">🔄 Reiniciar</button>
   <span class="toolbar-label">Velocidad:</span>
-  <button class="btn-speed" onclick="setSpeed(1, this)">1 min/s</button>
-  <button class="btn-speed active" onclick="setSpeed(5, this)">5 min/s</button>
+  <button class="btn-speed active" onclick="setSpeed(1, this)">1 min/s</button>
+  <button class="btn-speed" onclick="setSpeed(5, this)">5 min/s</button>
   <button class="btn-speed" onclick="setSpeed(15, this)">15 min/s</button>
   <button class="btn-speed" onclick="setSpeed(60, this)">1 h/s</button>
   <span class="toolbar-label" style="margin-left:12px;">Hora:</span>
@@ -110,6 +110,7 @@
 </div>
 
 <div class="grid-charts">
+
   <div class="card">
     <h2><span class="icon">📈</span> Eléctrico · 24h</h2>
     <div class="chart-container"><canvas id="chartElec"></canvas></div>
@@ -150,7 +151,9 @@
       <div><span class="v" id="statThermTotal">0</span><span class="l">Total kWh</span></div>
       <div><span class="v" id="statGasTotal">0</span><span class="l">Total m³ gas</span></div>
     </div>
-    <div class="card">
+  </div>
+
+  <div class="card">
     <h2><span class="icon">📊</span> Comparativa por zona</h2>
     <div class="chart-container"><canvas id="chartZonas"></canvas></div>
     <div class="legend">
@@ -159,6 +162,7 @@
       <span><span class="color-box" style="background:#f87171"></span> Térmica (kW)</span>
     </div>
   </div>
+
 </div>
 
 <script src="js/zonas.js"></script>

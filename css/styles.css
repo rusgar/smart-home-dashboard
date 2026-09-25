@@ -143,6 +143,7 @@ header .sub { font-size: 0.8rem; color: #94a3b8; }
   border-radius: 10px;
   margin-bottom: 8px;
   border: 1px solid #1e293b;
+  border-left: 3px solid #334155;
   transition: all 0.3s;
 }
 .appliance.on {
@@ -406,6 +407,7 @@ canvas {
   color: #64748b;
   font-size: 0.7rem;
 }
+
 /* ---------- Plantas y zonas ---------- */
 .planta-header {
   display: flex;
@@ -479,11 +481,6 @@ canvas {
   flex-direction: column;
   gap: 6px;
   margin-bottom: 6px;
-}
-
-/* Aparato con borde de color de zona */
-.appliance {
-  border-left: 3px solid #334155;
 }
 
 .appliance .acciones {
