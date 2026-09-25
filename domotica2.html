@@ -12,7 +12,7 @@
 <header>
   <div>
     <h1>🏠 Domótica 2 · Smart Home Dashboard</h1>
-    <div class="sub">Distribuye los electrodomésticos y simula un día completo</div>
+    <div class="sub">Distribuye equipos, simula el consumo y compensa con energía solar y diésel</div>
   </div>
   <div class="clock-display" id="clock">00:00</div>
 </header>
@@ -55,12 +55,13 @@
         <div class="plan-viewport">
           <div id="floorPlan" class="floor-plan" aria-label="Plano de la planta seleccionada"></div>
         </div>
+        <div class="plan-legend" id="planLegend" aria-label="Leyenda de dispositivos"></div>
       </article>
 
       <aside class="sidebar">
         <article class="card inspector-card">
-          <h2>Aparato seleccionado</h2>
-          <div id="emptyInspector" class="empty-inspector">Selecciona un aparato en el plano para verlo aquí.</div>
+          <h2>Activo seleccionado</h2>
+          <div id="emptyInspector" class="empty-inspector">Selecciona un equipo o activo energético en el plano para verlo aquí.</div>
           <div id="inspectorContent" class="inspector-content" hidden>
             <div class="inspector-title">
               <span id="inspectorEmoji" class="inspector-emoji"></span>
@@ -74,8 +75,8 @@
             <div class="inspector-metrics">
               <div><span>Potencia</span><strong id="inspectorPower"></strong></div>
               <div><span>Factor potencia</span><strong id="inspectorFp"></strong></div>
-              <div><span>Energía</span><strong id="inspectorEnergy"></strong></div>
-              <div><span>Agua</span><strong id="inspectorWater"></strong></div>
+              <div><span id="inspectorEnergyLabel">Energía</span><strong id="inspectorEnergy"></strong></div>
+              <div><span id="inspectorResourceLabel">Agua</span><strong id="inspectorWater"></strong></div>
             </div>
 
             <div class="control-group">
@@ -83,7 +84,7 @@
               <select id="inspectorZone" onchange="cambiarZonaAparato()"></select>
             </div>
 
-            <div class="control-group">
+            <div class="control-group" id="durationControl">
               <label for="inspectorDuration">Duración al encender</label>
               <div class="duration-controls">
                 <input id="inspectorDuration" type="number" min="1" max="1440" value="1" onchange="cambiarDuracionAparato()">
@@ -127,7 +128,7 @@
           </div>
         </div>
         <div class="metric">
-          <span class="metric-label">Potencia Activa</span>
+          <span class="metric-label">Importación de red</span>
           <span class="metric-value"><span id="pActiva">0.00</span><span class="unit">kW</span></span>
         </div>
         <div class="metric">
@@ -139,6 +140,30 @@
           <span class="metric-value"><span id="energiaHoy">0.000</span><span class="unit">kWh</span></span>
         </div>
         <div class="alert alert-ok" id="elecAlert">✅ Consumo normal</div>
+      </div>
+
+      <div class="card generation">
+        <h2><span class="icon">🔋</span> Balance energético</h2>
+        <div class="metric solar-metric">
+          <span class="metric-label">Demanda de la vivienda</span>
+          <span class="metric-value"><span id="demandaActual">0.00</span><span class="unit">kW</span></span>
+        </div>
+        <div class="metric solar-metric">
+          <span class="metric-label">Generación solar</span>
+          <span class="metric-value"><span id="solarGenerada">0.000</span><span class="unit">kWh</span></span>
+        </div>
+        <div class="metric diesel-metric">
+          <span class="metric-label">Generación diésel</span>
+          <span class="metric-value"><span id="dieselGenerada">0.000</span><span class="unit">kWh</span></span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Energía importada</span>
+          <span class="metric-value"><span id="importRed">0.000</span><span class="unit">kWh</span></span>
+        </div>
+        <div class="metric diesel-metric">
+          <span class="metric-label">Gasoleo consumido</span>
+          <span class="metric-value"><span id="gasoleoTotal">0.00</span><span class="unit">L</span></span>
+        </div>
       </div>
 
       <div class="card water">
@@ -200,12 +225,36 @@
           <span><span class="color-box" style="background:#334155"></span> Base casa (kW)</span>
           <span><span class="color-box" style="background:#fbbf24"></span> Electrodomésticos (kW)</span>
           <span><span class="color-box" style="background:#22c55e"></span> Factor de potencia (×100)</span>
+          <span><span class="color-box" style="background:#38bdf8"></span> Importación de red (kW)</span>
         </div>
         <div class="stat-mini">
           <div><span class="v" id="statElecMax">0</span><span class="l">Pico kW</span></div>
           <div><span class="v" id="statElecAvg">0</span><span class="l">Media kW</span></div>
           <div><span class="v" id="statElecTotal">0</span><span class="l">Total kWh</span></div>
           <div><span class="v" id="statFPMin">0</span><span class="l">FP mínimo</span></div>
+          <div><span class="v" id="statGridActive">0</span><span class="l">Red actual kW</span></div>
+          <div><span class="v" id="statGridAvg">0</span><span class="l">Red media kW</span></div>
+          <div><span class="v" id="statGridMax">0</span><span class="l">Red pico kW</span></div>
+          <div><span class="v" id="statGridTotal">0</span><span class="l">Red total kWh</span></div>
+          <div><span class="v" id="statGenerationTotal">0</span><span class="l">Generación kWh</span></div>
+          <div><span class="v" id="statExcessTotal">0</span><span class="l">Excedente kWh</span></div>
+        </div>
+      </div>
+
+      <div class="card generation-chart-card">
+        <h2><span class="icon">☀️</span> Solar y diésel · 24h</h2>
+        <div class="chart-container"><canvas id="chartGeneration"></canvas></div>
+        <div class="legend">
+          <span><span class="color-box" style="background:#facc15"></span> Solar (kW)</span>
+          <span><span class="color-box" style="background:#fb923c"></span> Diésel (kW)</span>
+        </div>
+        <div class="stat-mini">
+          <div><span class="v" id="statSolarCurrent">0</span><span class="l">Solar kW</span></div>
+          <div><span class="v" id="statSolarTotal">0</span><span class="l">Solar kWh</span></div>
+          <div><span class="v" id="statDieselCurrent">0</span><span class="l">Diésel kW</span></div>
+          <div><span class="v" id="statDieselTotal">0</span><span class="l">Diésel kWh</span></div>
+          <div><span class="v" id="statDieselTotalLiters">0</span><span class="l">Gasoleo L</span></div>
+          <div><span class="v" id="statOffsetTotal">0 %</span><span class="l">Autoconsumo</span></div>
         </div>
       </div>
 
@@ -242,6 +291,7 @@
           <span><span class="color-box" style="background:#fbbf24"></span> Potencia activa (kW)</span>
           <span><span class="color-box" style="background:#38bdf8"></span> Agua (L/h ÷ 10)</span>
           <span><span class="color-box" style="background:#f87171"></span> Térmica (kW)</span>
+          <span><span class="color-box" style="background:#4ade80"></span> Generación (kW)</span>
         </div>
       </div>
     </div>
