@@ -4,6 +4,7 @@
 // ================================================================
 const aparatos = {};
 const contadorDuplicados = {};
+const CLAVE_DISTRIBUCION = 'smart-home-distribucion-v1';
 
 CATALOGO.forEach(a => {
   aparatos[a.id] = crearInstanciaAparato(a, a.id, 1);
@@ -16,6 +17,9 @@ function crearInstanciaAparato(catalogoItem, idInstancia, numero) {
     idCatalogo: catalogoItem.id,
     numero: numero,
     zona: catalogoItem.zona,
+    posX: Number.isFinite(catalogoItem.posX) ? catalogoItem.posX : 50,
+    posY: Number.isFinite(catalogoItem.posY) ? catalogoItem.posY : 50,
+    duracionMinutos: 1,
     on: !!catalogoItem.siempreOn,
     minutosRestantes: 0,
     duracionTotal: 0,
@@ -34,6 +38,10 @@ const state = {
   minute: 0,
   playing: false,
   speed: 1,
+  tabActiva: 'plano',
+  plantaActiva: 'baja',
+  aparatoSeleccionado: null,
+  arrastre: null,
   baseElec: Array(24).fill(0),
   baseAgua: Array(24).fill(0),
   baseTerm: Array(24).fill(0),
@@ -46,6 +54,8 @@ const state = {
   termicaHoy: 0,
   gasHoy: 0
 };
+
+cargarDistribucion();
 
 // ================================================================
 // PERFILES BASE
@@ -83,93 +93,379 @@ function generarPerfilesBase() {
 // ================================================================
 // RENDER APARATOS (agrupados por planta y zona)
 // ================================================================
-function renderAparatos() {
-  const cont = document.getElementById('applianceList');
-  cont.innerHTML = '';
+function limitar(valor, minimo, maximo) {
+  return Math.min(maximo, Math.max(minimo, valor));
+}
 
-  PLANTAS.forEach(planta => {
-    const headerP = document.createElement('div');
-    headerP.className = 'planta-header';
-    headerP.innerHTML = `<span>${planta.icono}</span> ${planta.nombre}`;
-    cont.appendChild(headerP);
+function guardarDistribucion() {
+  try {
+    const dispositivos = Object.values(aparatos).map(ap => ({
+      idCatalogo: ap.idCatalogo,
+      idInstancia: ap.idInstancia,
+      numero: ap.numero,
+      zona: ap.zona,
+      posX: ap.posX,
+      posY: ap.posY,
+      duracionMinutos: ap.duracionMinutos
+    }));
+    localStorage.setItem(CLAVE_DISTRIBUCION, JSON.stringify({ version: 1, dispositivos }));
+  } catch (error) {
+    return false;
+  }
+  return true;
+}
 
-    planta.zonas.forEach(idZona => {
-      const zona = ZONAS[idZona];
-      if (!zona) return;
+function cargarDistribucion() {
+  try {
+    const contenido = localStorage.getItem(CLAVE_DISTRIBUCION);
+    if (!contenido) return;
+    const guardada = JSON.parse(contenido);
+    if (guardada.version !== 1 || !Array.isArray(guardada.dispositivos)) return;
 
-      const aparatosZona = Object.values(aparatos).filter(a => a.zona === idZona);
-      const encendidos = aparatosZona.filter(a => a.on).length;
-
-      const headerZ = document.createElement('div');
-      headerZ.className = 'zona-header';
-      headerZ.style.borderLeftColor = zona.color;
-      headerZ.innerHTML = `
-        <div class="zona-titulo">
-          <span>${zona.icono}</span>
-          <span>${zona.nombre}</span>
-          <span class="zona-contador">${encendidos}/${aparatosZona.length}</span>
-        </div>
-        <div class="zona-botones">
-          <button class="btn-zona btn-zona-on" onclick="encenderZona('${idZona}')" title="Encender toda la zona">⏻</button>
-          <button class="btn-zona btn-zona-off" onclick="apagarZona('${idZona}')" title="Apagar toda la zona">⏼</button>
-        </div>
-      `;
-      cont.appendChild(headerZ);
-
-      const gridZ = document.createElement('div');
-      gridZ.className = 'zona-aparatos';
-
-      aparatosZona.forEach(ap => {
-        const div = document.createElement('div');
-        div.className = 'appliance' + (ap.on ? ' on' : '');
-        div.style.borderLeftColor = zona.color;
-
-        const nombreMostrar = ap.numero > 1 ? `${ap.nombre} ${ap.numero}` : ap.nombre;
-
-        div.innerHTML = `
-          <div class="emoji">${ap.emoji}</div>
-          <div class="info">
-            <div class="name">${nombreMostrar}</div>
-            <div class="power">${ap.potencia} kW · FP ${ap.fp}</div>
-            <div class="timer-row">
-              <input type="number" min="1" max="1440" value="1" id="dur_${ap.idInstancia}">
-              <select id="unit_${ap.idInstancia}">
-                <option value="1" selected>min</option>
-                <option value="60">h</option>
-              </select>
-              <span class="status-badge" id="badge_${ap.idInstancia}">${ap.on ? 'ON' : 'OFF'}</span>
-            </div>
-          </div>
-          <div class="acciones">
-            <button class="switch ${ap.on ? 'on' : ''}" onclick="toggleAparato('${ap.idInstancia}')"></button>
-            ${ap.duplicable ? `<button class="btn-mini" onclick="duplicarAparato('${ap.idInstancia}')" title="Duplicar">➕</button>` : ''}
-            ${ap.numero > 1 ? `<button class="btn-mini btn-peligro" onclick="eliminarAparato('${ap.idInstancia}')" title="Eliminar">🗑️</button>` : ''}
-          </div>
-        `;
-        gridZ.appendChild(div);
-      });
-
-      cont.appendChild(gridZ);
+    const restaurados = {};
+    CATALOGO.forEach(item => {
+      restaurados[item.id] = crearInstanciaAparato(item, item.id, 1);
     });
+
+    guardada.dispositivos.forEach(dispositivo => {
+      const item = CATALOGO.find(c => c.id === dispositivo.idCatalogo);
+      if (!item || !ZONAS[dispositivo.zona]) return;
+      const numero = Number(dispositivo.numero) || 1;
+
+      if (numero === 1) {
+        if (dispositivo.idInstancia !== item.id || !restaurados[item.id]) return;
+        restaurados[item.id].zona = dispositivo.zona;
+        restaurados[item.id].posX = limitar(Number(dispositivo.posX) || item.posX, 2, 98);
+        restaurados[item.id].posY = limitar(Number(dispositivo.posY) || item.posY, 3, 97);
+        restaurados[item.id].duracionMinutos = limitar(Number(dispositivo.duracionMinutos) || 1, 1, 1440);
+        return;
+      }
+
+      if (!item.duplicable || restaurados[dispositivo.idInstancia]) return;
+      const instancia = crearInstanciaAparato(item, dispositivo.idInstancia, numero);
+      instancia.zona = dispositivo.zona;
+      instancia.posX = limitar(Number(dispositivo.posX) || item.posX, 2, 98);
+      instancia.posY = limitar(Number(dispositivo.posY) || item.posY, 3, 97);
+      instancia.duracionMinutos = limitar(Number(dispositivo.duracionMinutos) || 1, 1, 1440);
+      restaurados[instancia.idInstancia] = instancia;
+      contadorDuplicados[item.id] = Math.max(contadorDuplicados[item.id] || 1, instancia.numero);
+    });
+
+    Object.keys(aparatos).forEach(id => delete aparatos[id]);
+    Object.assign(aparatos, restaurados);
+  } catch (error) {
+    return;
+  }
+}
+
+function reiniciarInstanciasAparatos() {
+  Object.keys(aparatos).forEach(id => delete aparatos[id]);
+  Object.keys(contadorDuplicados).forEach(id => delete contadorDuplicados[id]);
+  CATALOGO.forEach(item => {
+    aparatos[item.id] = crearInstanciaAparato(item, item.id, 1);
   });
+}
+
+function restablecerPlano() {
+  if (!confirm('¿Restaurar la distribución original y eliminar los duplicados?')) return;
+  reiniciarInstanciasAparatos();
+  state.aparatoSeleccionado = null;
+  state.plantaActiva = 'baja';
+  state.playing = false;
+  localStorage.removeItem(CLAVE_DISTRIBUCION);
+  renderAparatos();
+  updateUI();
+  const btn = document.getElementById('btnPlay');
+  btn.textContent = '▶ Iniciar día';
+  btn.className = 'btn-play';
+}
+
+function nombreAparato(ap) {
+  return ap.numero > 1 ? `${ap.nombre} ${ap.numero}` : ap.nombre;
+}
+
+function zonaDesdePosicion(x, y, planta) {
+  return Object.values(ZONAS).find(zona => {
+    const plano = zona.plano;
+    return zona.planta === planta && plano &&
+      x >= plano.x && x <= plano.x + plano.w &&
+      y >= plano.y && y <= plano.y + plano.h;
+  });
+}
+
+function posicionarAparatoEnZona(ap, idZona) {
+  const zona = ZONAS[idZona];
+  if (!zona || !zona.plano) return;
+  const ocupados = Object.values(aparatos).filter(otro => otro.idInstancia !== ap.idInstancia && otro.zona === idZona).length;
+  const posiciones = [
+    [22, 28], [50, 28], [78, 28],
+    [22, 68], [50, 68], [78, 68]
+  ];
+  const [x, y] = posiciones[ocupados % posiciones.length];
+  ap.zona = idZona;
+  ap.posX = limitar(zona.plano.x + zona.plano.w * x / 100, 2, 98);
+  ap.posY = limitar(zona.plano.y + zona.plano.h * y / 100, 3, 97);
+}
+
+function renderPlantaTabs() {
+  const contenedor = document.getElementById('plantaTabs');
+  contenedor.innerHTML = PLANTAS.map(planta => `
+    <button class="plant-tab ${planta.id === state.plantaActiva ? 'active' : ''}" onclick="cambiarPlanta('${planta.id}')">
+      ${planta.icono} ${planta.nombre}
+    </button>
+  `).join('');
+}
+
+function renderPlano() {
+  const plano = document.getElementById('floorPlan');
+  const planta = PLANTAS.find(p => p.id === state.plantaActiva) || PLANTAS[0];
+  state.plantaActiva = planta.id;
+
+  plano.innerHTML = planta.zonas.map(idZona => {
+    const zona = ZONAS[idZona];
+    const total = Object.values(aparatos).filter(ap => ap.zona === idZona).length;
+    return `
+      <div class="plano-zona" style="left:${zona.plano.x}%;top:${zona.plano.y}%;width:${zona.plano.w}%;height:${zona.plano.h}%;--zona-color:${zona.color}">
+        <span class="plano-zona-label">${zona.icono} ${zona.nombre}<span class="plano-zona-count">${total}</span></span>
+      </div>
+    `;
+  }).join('');
+
+  Object.values(aparatos)
+    .filter(ap => ZONAS[ap.zona].planta === planta.id)
+    .forEach(ap => {
+      const zona = ZONAS[ap.zona];
+      const boton = document.createElement('button');
+      boton.type = 'button';
+      boton.className = 'plan-device';
+      if (ap.on) boton.classList.add('on');
+      if (ap.siempreOn) boton.classList.add('permanent');
+      if (ap.idInstancia === state.aparatoSeleccionado) boton.classList.add('selected');
+      boton.style.left = `${ap.posX}%`;
+      boton.style.top = `${ap.posY}%`;
+      boton.style.setProperty('--zona-color', zona.color);
+      boton.dataset.id = ap.idInstancia;
+      boton.setAttribute('aria-label', `${nombreAparato(ap)}, ${zona.nombre}`);
+      boton.innerHTML = `
+        <span class="plan-device-emoji">${ap.emoji}</span>
+        <span class="plan-device-copy">
+          <span class="plan-device-name">${nombreAparato(ap)}</span>
+          <span class="plan-device-status">${ap.on ? (ap.siempreOn ? 'SIEMPRE ON' : 'ON') : 'OFF'}</span>
+        </span>
+      `;
+      boton.addEventListener('click', () => seleccionarAparato(ap.idInstancia));
+      boton.addEventListener('pointerdown', iniciarArrastreAparato);
+      plano.appendChild(boton);
+    });
+
+  renderPlantaTabs();
+}
+
+function actualizarSeleccionVisual() {
+  document.querySelectorAll('.plan-device').forEach(boton => {
+    boton.classList.toggle('selected', boton.dataset.id === state.aparatoSeleccionado);
+  });
+}
+
+function seleccionarAparato(idInstancia, cambiarPlanta = true) {
+  const ap = aparatos[idInstancia];
+  if (!ap) return;
+  state.aparatoSeleccionado = idInstancia;
+  if (cambiarPlanta) state.plantaActiva = ZONAS[ap.zona].planta;
+  actualizarSeleccionVisual();
+  renderInspector();
+  renderPlantaTabs();
+}
+
+function cambiarPlanta(idPlanta) {
+  if (!PLANTAS.some(planta => planta.id === idPlanta)) return;
+  state.plantaActiva = idPlanta;
+  const seleccionado = aparatos[state.aparatoSeleccionado];
+  if (!seleccionado || ZONAS[seleccionado.zona].planta !== idPlanta) {
+    const primero = Object.values(aparatos).find(ap => ZONAS[ap.zona].planta === idPlanta);
+    state.aparatoSeleccionado = primero ? primero.idInstancia : null;
+  }
+  renderPlano();
+  renderInspector();
+}
+
+function iniciarArrastreAparato(event) {
+  if (event.pointerType === 'mouse' && event.button !== 0) return;
+  const boton = event.currentTarget;
+  const ap = aparatos[boton.dataset.id];
+  const plano = document.getElementById('floorPlan');
+  if (!ap || !plano) return;
+
+  event.preventDefault();
+  seleccionarAparato(ap.idInstancia, false);
+  state.arrastre = {
+    id: ap.idInstancia,
+    pointerId: event.pointerId,
+    planta: ZONAS[ap.zona].planta,
+    posX: ap.posX,
+    posY: ap.posY
+  };
+
+  try {
+    boton.setPointerCapture(event.pointerId);
+  } catch (error) {
+    state.arrastre = null;
+    return;
+  }
+  boton.classList.add('dragging');
+
+  const mover = moveEvent => {
+    if (!state.arrastre || state.arrastre.pointerId !== moveEvent.pointerId) return;
+    const rect = plano.getBoundingClientRect();
+    state.arrastre.posX = limitar((moveEvent.clientX - rect.left) / rect.width * 100, 2, 98);
+    state.arrastre.posY = limitar((moveEvent.clientY - rect.top) / rect.height * 100, 3, 97);
+    boton.style.left = `${state.arrastre.posX}%`;
+    boton.style.top = `${state.arrastre.posY}%`;
+  };
+
+  const finalizar = cancelado => {
+    if (!state.arrastre || state.arrastre.pointerId !== event.pointerId) return;
+    const arrastre = state.arrastre;
+    state.arrastre = null;
+    boton.classList.remove('dragging');
+    try {
+      boton.releasePointerCapture(event.pointerId);
+    } catch (error) {
+      boton.classList.remove('dragging');
+    }
+
+    const zonaDestino = zonaDesdePosicion(arrastre.posX, arrastre.posY, arrastre.planta);
+    if (!cancelado && zonaDestino) {
+      ap.zona = zonaDestino.id;
+      ap.posX = arrastre.posX;
+      ap.posY = arrastre.posY;
+      guardarDistribucion();
+    }
+    renderPlano();
+    renderInspector();
+    updateUI();
+  };
+
+  boton.addEventListener('pointermove', mover);
+  boton.addEventListener('pointerup', () => finalizar(false));
+  boton.addEventListener('pointercancel', () => finalizar(true));
+}
+
+function renderInspector() {
+  const vacio = document.getElementById('emptyInspector');
+  const contenido = document.getElementById('inspectorContent');
+  const ap = aparatos[state.aparatoSeleccionado];
+  vacio.hidden = !!ap;
+  contenido.hidden = !ap;
+  if (!ap) return;
+
+  const zona = ZONAS[ap.zona];
+  document.getElementById('inspectorEmoji').textContent = ap.emoji;
+  document.getElementById('inspectorName').textContent = nombreAparato(ap);
+  document.getElementById('inspectorLocation').textContent = `${zona.icono} ${zona.nombre} · ${PLANTAS.find(p => p.id === zona.planta).nombre}`;
+  document.getElementById('inspectorPower').textContent = `${ap.potencia.toFixed(2)} kW`;
+  document.getElementById('inspectorFp').textContent = ap.fp.toFixed(2);
+  document.getElementById('inspectorEnergy').textContent = `${ap.energiaAcum.toFixed(3)} kWh`;
+  document.getElementById('inspectorWater').textContent = `${ap.aguaAcum.toFixed(1)} L`;
+
+  const interruptor = document.getElementById('inspectorSwitch');
+  interruptor.className = `switch ${ap.on ? 'on' : ''}`;
+  interruptor.disabled = !!ap.siempreOn;
+  interruptor.setAttribute('aria-pressed', String(ap.on));
+  interruptor.title = ap.siempreOn ? 'Frigorífico: siempre encendido' : ap.on ? 'Apagar' : 'Encender';
+
+  const selectorZona = document.getElementById('inspectorZone');
+  selectorZona.innerHTML = PLANTAS.map(planta => `
+    <optgroup label="${planta.nombre}">
+      ${planta.zonas.map(idZona => `<option value="${idZona}">${ZONAS[idZona].nombre}</option>`).join('')}
+    </optgroup>
+  `).join('');
+  selectorZona.value = ap.zona;
+
+  const unidad = ap.duracionMinutos >= 60 && ap.duracionMinutos % 60 === 0 ? 60 : 1;
+  document.getElementById('inspectorDuration').value = ap.duracionMinutos / unidad;
+  document.getElementById('inspectorUnit').value = String(unidad);
+
+  const duplicar = document.getElementById('inspectorDuplicate');
+  const eliminar = document.getElementById('inspectorDelete');
+  duplicar.disabled = !ap.duplicable;
+  eliminar.disabled = ap.numero === 1;
+}
+
+function updateActiveList() {
+  const contenedor = document.getElementById('activeList');
+  const activos = Object.values(aparatos).filter(ap => ap.on);
+  if (activos.length === 0) {
+    contenedor.textContent = 'Ninguno activo';
+    return;
+  }
+
+  contenedor.innerHTML = activos.map(ap => {
+    const estado = ap.siempreOn ? 'Siempre ON' : `${ap.minutosRestantes} min`;
+    return `
+      <div class="item">
+        <button onclick="seleccionarAparato('${ap.idInstancia}')">${ap.emoji} ${nombreAparato(ap)}</button>
+        <span class="t">${estado}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderAparatos() {
+  renderPlano();
+  renderInspector();
+  updateActiveList();
+}
+
+function activarAparato(ap) {
+  ap.on = true;
+  ap.minutosRestantes = ap.duracionMinutos;
+  ap.duracionTotal = ap.duracionMinutos;
+  ap.horaInicio = state.hour + state.minute / 60;
+}
+
+function desactivarAparato(ap) {
+  ap.on = false;
+  ap.minutosRestantes = 0;
+  ap.duracionTotal = 0;
+  ap.horaInicio = null;
 }
 
 function toggleAparato(idInstancia) {
   const ap = aparatos[idInstancia];
-  if (!ap) return;
+  if (!ap || ap.siempreOn) return;
   if (ap.on) {
-    ap.on = false;
-    ap.minutosRestantes = 0;
-    ap.duracionTotal = 0;
+    desactivarAparato(ap);
   } else {
-    const dur = parseFloat(document.getElementById('dur_' + idInstancia).value) || 1;
-    const unit = parseFloat(document.getElementById('unit_' + idInstancia).value) || 1;
-    const minutos = dur * unit;
-    ap.on = true;
-    ap.minutosRestantes = minutos;
-    ap.duracionTotal = minutos;
-    ap.horaInicio = state.hour + state.minute / 60;
+    activarAparato(ap);
   }
+  renderAparatos();
+  updateUI();
+}
+
+function toggleAparatoFromInspector() {
+  if (state.aparatoSeleccionado) toggleAparato(state.aparatoSeleccionado);
+}
+
+function cambiarDuracionAparato() {
+  const ap = aparatos[state.aparatoSeleccionado];
+  if (!ap) return;
+  const valor = Math.max(1, Number(document.getElementById('inspectorDuration').value) || 1);
+  const unidad = Number(document.getElementById('inspectorUnit').value) || 1;
+  ap.duracionMinutos = limitar(Math.round(valor * unidad), 1, 1440);
+  if (ap.on && !ap.siempreOn) activarAparato(ap);
+  guardarDistribucion();
+  renderInspector();
+  updateUI();
+}
+
+function cambiarZonaAparato() {
+  const ap = aparatos[state.aparatoSeleccionado];
+  if (!ap) return;
+  const idZona = document.getElementById('inspectorZone').value;
+  posicionarAparatoEnZona(ap, idZona);
+  state.plantaActiva = ZONAS[idZona].planta;
+  guardarDistribucion();
   renderAparatos();
   updateUI();
 }
@@ -192,10 +488,17 @@ function duplicarAparato(idInstancia) {
     nuevoId,
     contadorDuplicados[idCat]
   );
-  nuevaInstancia.zona = original.zona;
+  nuevaInstancia.duracionMinutos = original.duracionMinutos;
+  posicionarAparatoEnZona(nuevaInstancia, original.zona);
   aparatos[nuevoId] = nuevaInstancia;
+  state.aparatoSeleccionado = nuevoId;
+  guardarDistribucion();
   renderAparatos();
   updateUI();
+}
+
+function duplicarAparatoSeleccionado() {
+  if (state.aparatoSeleccionado) duplicarAparato(state.aparatoSeleccionado);
 }
 
 function eliminarAparato(idInstancia) {
@@ -210,17 +513,21 @@ function eliminarAparato(idInstancia) {
     return;
   }
   delete aparatos[idInstancia];
+  state.aparatoSeleccionado = Object.values(aparatos).find(otro => otro.zona === ap.zona)?.idInstancia || null;
+  guardarDistribucion();
   renderAparatos();
   updateUI();
+}
+
+function eliminarAparatoSeleccionado() {
+  if (state.aparatoSeleccionado) eliminarAparato(state.aparatoSeleccionado);
 }
 
 function apagarZona(idZona) {
   let apagados = 0;
   Object.values(aparatos).forEach(ap => {
     if (ap.zona === idZona && ap.on && !ap.siempreOn) {
-      ap.on = false;
-      ap.minutosRestantes = 0;
-      ap.duracionTotal = 0;
+      desactivarAparato(ap);
       apagados++;
     }
   });
@@ -231,19 +538,20 @@ function apagarZona(idZona) {
 
 function encenderZona(idZona) {
   Object.values(aparatos).forEach(ap => {
-    if (ap.zona === idZona && !ap.on && !ap.siempreOn) {
-      const durInput = document.getElementById('dur_' + ap.idInstancia);
-      const unitInput = document.getElementById('unit_' + ap.idInstancia);
-      const dur = durInput ? parseFloat(durInput.value) || 1 : 1;
-      const unit = unitInput ? parseFloat(unitInput.value) || 1 : 1;
-      ap.on = true;
-      ap.minutosRestantes = dur * unit;
-      ap.duracionTotal = dur * unit;
-      ap.horaInicio = state.hour + state.minute / 60;
-    }
+    if (ap.zona === idZona && !ap.on && !ap.siempreOn) activarAparato(ap);
   });
   renderAparatos();
   updateUI();
+}
+
+function encenderZonaDesdeInspector() {
+  const ap = aparatos[state.aparatoSeleccionado];
+  if (ap) encenderZona(ap.zona);
+}
+
+function apagarZonaDesdeInspector() {
+  const ap = aparatos[state.aparatoSeleccionado];
+  if (ap) apagarZona(ap.zona);
 }
 
 function getConsumoPorZona() {
@@ -274,7 +582,24 @@ function getConsumoPorZona() {
 // ================================================================
 // CONTROLES
 // ================================================================
+function setTab(idTab, boton) {
+  if (!['plano', 'consumo', 'graficas'].includes(idTab)) return;
+  state.tabActiva = idTab;
+  document.querySelectorAll('.tab-button').forEach(tab => {
+    const activo = tab === boton || tab.dataset.tab === idTab;
+    tab.classList.toggle('active', activo);
+    tab.setAttribute('aria-selected', String(activo));
+  });
+  document.querySelectorAll('.tab-panel').forEach(panel => {
+    const activo = panel.id === `panel-${idTab}`;
+    panel.hidden = !activo;
+    panel.classList.toggle('active', activo);
+  });
+  if (idTab === 'graficas') requestAnimationFrame(drawCharts);
+}
+
 function togglePlay() {
+  if (!state.playing && state.hour === 23 && state.minute === 59) resetAll();
   state.playing = !state.playing;
   const btn = document.getElementById('btnPlay');
   if (state.playing) {
@@ -293,7 +618,7 @@ function setSpeed(s, btn) {
 }
 
 function jumpToHour(h) {
-  state.hour = parseInt(h);
+  state.hour = limitar(parseInt(h, 10) || 0, 0, 23);
   state.minute = 0;
   updateUI();
 }
@@ -305,25 +630,29 @@ function avanzarMinuto() {
   const h = state.hour;
   let sumaElecAp = 0, sumaAguaAp = 0, sumaTermAp = 0;
   let fpPond = 0, pesoTot = 0;
+  let cambioEstado = false;
 
   Object.values(aparatos).forEach(ap => {
-    if (ap.on && ap.minutosRestantes > 0) {
-      sumaElecAp += ap.potencia;
-      sumaAguaAp += ap.agua * 60;
-      sumaTermAp += ap.termica;
-      fpPond += ap.fp * ap.potencia;
-      pesoTot += ap.potencia;
+    if (!ap.on) return;
 
-      const h1 = 1 / 60;
-      ap.energiaAcum += ap.potencia * h1;
-      ap.aguaAcum += ap.agua * 60 * h1;
-      ap.termicaAcum += ap.termica * h1;
+    sumaElecAp += ap.potencia;
+    sumaAguaAp += ap.agua * 60;
+    sumaTermAp += ap.termica;
+    fpPond += ap.fp * ap.potencia;
+    pesoTot += ap.potencia;
 
+    const h1 = 1 / 60;
+    ap.energiaAcum += ap.potencia * h1;
+    ap.aguaAcum += ap.agua * 60 * h1;
+    ap.termicaAcum += ap.termica * h1;
+
+    if (!ap.siempreOn) {
       ap.minutosRestantes -= 1;
       if (ap.minutosRestantes <= 0) {
         ap.on = false;
         ap.minutosRestantes = 0;
-        renderAparatos();
+        ap.horaInicio = null;
+        cambioEstado = true;
       }
     }
   });
@@ -342,6 +671,7 @@ function avanzarMinuto() {
   state.aguaHoy += (state.baseAgua[h] + state.apAgua[h]) * frac;
   state.termicaHoy += (state.baseTerm[h] + state.apTerm[h]) * frac;
   state.gasHoy = state.termicaHoy / 10.5;
+  return cambioEstado;
 }
 
 // ================================================================
@@ -427,24 +757,12 @@ function updateUI() {
   updateDayBar();
   updateActiveList();
   updateStats();
-  drawCharts();
-}
-
-function updateActiveList() {
-  const cont = document.getElementById('activeList');
-  const activos = Object.values(aparatos).filter(a => a.on);
-  if (activos.length === 0) {
-    cont.innerHTML = 'Ninguno activo';
-    return;
+  const seleccionado = aparatos[state.aparatoSeleccionado];
+  if (seleccionado) {
+    document.getElementById('inspectorEnergy').textContent = `${seleccionado.energiaAcum.toFixed(3)} kWh`;
+    document.getElementById('inspectorWater').textContent = `${seleccionado.aguaAcum.toFixed(1)} L`;
   }
-  cont.innerHTML = activos.map(ap => {
-    const zona = ZONAS[ap.zona];
-    const nombreMostrar = ap.numero > 1 ? `${ap.nombre} ${ap.numero}` : ap.nombre;
-    return `<div class="item">
-      <span>${zona.icono} ${nombreMostrar}</span>
-      <span class="t">${ap.minutosRestantes} min</span>
-    </div>`;
-  }).join('');
+  if (state.tabActiva === 'graficas') drawCharts();
 }
 
 function updateDayBar() {
@@ -520,8 +838,10 @@ function updateStats() {
 // GRÁFICAS EN CANVAS
 // ================================================================
 function setupCanvas(canvas) {
+  if (!canvas) return null;
   const dpr = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
   canvas.width = rect.width * dpr;
   canvas.height = rect.height * dpr;
   const ctx = canvas.getContext('2d');
@@ -530,9 +850,10 @@ function setupCanvas(canvas) {
 }
 
 function drawCharts() {
-  // Eléctrico
   const canvas = document.getElementById('chartElec');
-  const { ctx, w, h } = setupCanvas(canvas);
+  const config = setupCanvas(canvas);
+  if (!config) return;
+  const { ctx, w, h } = config;
   ctx.clearRect(0, 0, w, h);
 
   const padL = 40, padR = 15, padT = 15, padB = 25;
@@ -613,9 +934,9 @@ function drawCharts() {
 }
 
 function drawChartZonas() {
-  const canvas = document.getElementById('chartZonas');
-  if (!canvas) return;
-  const { ctx, w, h } = setupCanvas(canvas);
+  const config = setupCanvas(document.getElementById('chartZonas'));
+  if (!config) return;
+  const { ctx, w, h } = config;
   ctx.clearRect(0, 0, w, h);
 
   const padL = 45, padR = 15, padT = 15, padB = 40;
@@ -678,8 +999,9 @@ function drawChartZonas() {
 }
 
 function drawBarChart(canvasId, baseData, apData, colorBase, colorAp, colorAlert, alertThreshold) {
-  const canvas = document.getElementById(canvasId);
-  const { ctx, w, h } = setupCanvas(canvas);
+  const config = setupCanvas(document.getElementById(canvasId));
+  if (!config) return;
+  const { ctx, w, h } = config;
   ctx.clearRect(0, 0, w, h);
 
   const padL = 40, padR = 15, padT = 15, padB = 25;
@@ -752,16 +1074,18 @@ function drawBarChart(canvasId, baseData, apData, colorBase, colorAp, colorAlert
 // ================================================================
 let lastTick = performance.now();
 let accumMinutos = 0;
+let ultimaActualizacionUI = 0;
 function loop(now) {
   const dt = (now - lastTick) / 1000;
   lastTick = now;
 
   if (state.playing) {
+    let cambioAparatos = false;
     accumMinutos += state.speed * dt;
     while (accumMinutos >= 1) {
       accumMinutos -= 1;
       state.minute++;
-      avanzarMinuto();
+      cambioAparatos = avanzarMinuto() || cambioAparatos;
       if (state.minute >= 60) {
         state.minute = 0;
         state.hour++;
@@ -775,7 +1099,16 @@ function loop(now) {
         }
       }
     }
-    updateUI();
+    if (cambioAparatos) {
+      renderPlano();
+      renderInspector();
+    }
+    if (now - ultimaActualizacionUI >= 250) {
+      updateUI();
+      ultimaActualizacionUI = now;
+    }
+  } else {
+    accumMinutos = 0;
   }
   requestAnimationFrame(loop);
 }
@@ -796,17 +1129,20 @@ function resetAll() {
   state.termicaHoy = 0;
   state.gasHoy = 0;
 
-  Object.keys(aparatos).forEach(k => delete aparatos[k]);
-  Object.keys(contadorDuplicados).forEach(k => delete contadorDuplicados[k]);
-
-  CATALOGO.forEach(a => {
-    aparatos[a.id] = crearInstanciaAparato(a, a.id, 1);
+  Object.values(aparatos).forEach(ap => {
+    ap.on = !!ap.siempreOn;
+    ap.minutosRestantes = 0;
+    ap.duracionTotal = 0;
+    ap.energiaAcum = 0;
+    ap.aguaAcum = 0;
+    ap.termicaAcum = 0;
+    ap.horaInicio = null;
   });
 
+  accumMinutos = 0;
   document.getElementById('btnPlay').textContent = '▶ Iniciar día';
   document.getElementById('btnPlay').className = 'btn-play';
 
-  generarPerfilesBase();
   renderAparatos();
   updateUI();
 }
@@ -1035,6 +1371,10 @@ async function exportarExcelConGraficos() {
     return;
   }
 
+  const tabAnterior = state.tabActiva;
+  if (tabAnterior !== 'graficas') setTab('graficas');
+  drawCharts();
+
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Smart Home Dashboard';
   wb.created = new Date();
@@ -1191,13 +1531,18 @@ async function exportarExcelConGraficos() {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+  if (tabAnterior !== 'graficas') setTab(tabAnterior);
 }
 
 // ================================================================
 // INICIALIZACIÓN
 // ================================================================
-window.addEventListener('resize', drawCharts);
+window.addEventListener('resize', () => {
+  if (state.tabActiva === 'graficas') drawCharts();
+});
 
+state.aparatoSeleccionado = CATALOGO[0].id;
+state.plantaActiva = ZONAS[aparatos[state.aparatoSeleccionado].zona].planta;
 generarPerfilesBase();
 renderAparatos();
 updateUI();

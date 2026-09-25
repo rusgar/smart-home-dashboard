@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Domótica 2 · Smart Home Dashboard</title>
 <link rel="stylesheet" href="css/styles.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
@@ -11,159 +12,241 @@
 <header>
   <div>
     <h1>🏠 Domótica 2 · Smart Home Dashboard</h1>
-    <div class="sub">Simula, enciende aparatos y descarga los datos a Excel</div>
+    <div class="sub">Distribuye los electrodomésticos y simula un día completo</div>
   </div>
   <div class="clock-display" id="clock">00:00</div>
 </header>
 
-<div class="toolbar">
+<div class="toolbar" aria-label="Controles de simulación">
   <button class="btn-play" id="btnPlay" onclick="togglePlay()">▶ Iniciar día</button>
-  <button class="btn-reset" onclick="resetAll()">🔄 Reiniciar</button>
+  <button class="btn-reset" onclick="resetAll()">Reiniciar día</button>
   <span class="toolbar-label">Velocidad:</span>
   <button class="btn-speed active" onclick="setSpeed(1, this)">1 min/s</button>
   <button class="btn-speed" onclick="setSpeed(5, this)">5 min/s</button>
   <button class="btn-speed" onclick="setSpeed(15, this)">15 min/s</button>
   <button class="btn-speed" onclick="setSpeed(60, this)">1 h/s</button>
-  <span class="toolbar-label" style="margin-left:12px;">Hora:</span>
-  <input type="range" id="hourSlider" min="0" max="23" value="0" step="1"
-         style="width:150px;" oninput="jumpToHour(this.value)">
-  <button class="btn-csv" onclick="exportarCSV()">📥 CSV</button>
-  <button class="btn-xlsx" onclick="exportarExcelMultiHoja()">📊 Excel simple (.xls)</button>
-  <button class="btn-xlsx" style="background:#7c3aed" onclick="exportarExcelConGraficos()">📈 Excel con gráficos (.xlsx)</button>
+  <span class="toolbar-label slider-label">Hora:</span>
+  <input type="range" id="hourSlider" min="0" max="23" value="0" step="1" oninput="jumpToHour(this.value)">
 </div>
 
 <div class="day-bar" id="dayBar"></div>
 
-<div class="layout">
-  <div class="card">
-    <h2><span class="icon">🔌</span> Electrodomésticos</h2>
-    <div id="applianceList"></div>
-    <h2 style="margin-top:20px;"><span class="icon">⏱️</span> Aparatos activos ahora</h2>
-    <div class="active-list" id="activeList">Ninguno activo</div>
-  </div>
+<nav class="tabs" role="tablist" aria-label="Secciones del panel">
+  <button class="tab-button active" data-tab="plano" role="tab" aria-selected="true" aria-controls="panel-plano" onclick="setTab('plano', this)">Plano de la casa</button>
+  <button class="tab-button" data-tab="consumo" role="tab" aria-selected="false" aria-controls="panel-consumo" onclick="setTab('consumo', this)">Consumo</button>
+  <button class="tab-button" data-tab="graficas" role="tab" aria-selected="false" aria-controls="panel-graficas" onclick="setTab('graficas', this)">Gráficas</button>
+</nav>
 
-  <div class="grid-metrics">
-    <div class="card electric">
-      <h2><span class="icon">⚡</span> Consumo Eléctrico</h2>
-      <div class="gauge-wrap">
-        <div class="gauge" id="gaugeFP">
-          <div class="gauge-text">
-            <div class="val" id="fpVal">0.00</div>
-            <div class="lbl">Factor Potencia</div>
+<main>
+  <section id="panel-plano" class="tab-panel active" role="tabpanel">
+    <div class="plan-layout">
+      <article class="card plan-card">
+        <div class="section-heading">
+          <div>
+            <h2>Plano de la vivienda</h2>
+            <p>Arrastra cada electrodoméstico para colocarlo dentro de una zona.</p>
+          </div>
+          <div id="plantaTabs" class="plant-tabs" aria-label="Planta de la vivienda"></div>
+        </div>
+        <div class="plan-toolbar">
+          <span id="planHint" class="plan-hint" aria-live="polite">Selecciona un electrodoméstico y arrástralo por el plano.</span>
+          <button class="btn-secondary" onclick="restablecerPlano()">Restaurar plano</button>
+        </div>
+        <div class="plan-viewport">
+          <div id="floorPlan" class="floor-plan" aria-label="Plano de la planta seleccionada"></div>
+        </div>
+      </article>
+
+      <aside class="sidebar">
+        <article class="card inspector-card">
+          <h2>Aparato seleccionado</h2>
+          <div id="emptyInspector" class="empty-inspector">Selecciona un aparato en el plano para verlo aquí.</div>
+          <div id="inspectorContent" class="inspector-content" hidden>
+            <div class="inspector-title">
+              <span id="inspectorEmoji" class="inspector-emoji"></span>
+              <div>
+                <strong id="inspectorName"></strong>
+                <span id="inspectorLocation" class="inspector-location"></span>
+              </div>
+              <button id="inspectorSwitch" class="switch" onclick="toggleAparatoFromInspector()" aria-label="Encender o apagar"></button>
+            </div>
+
+            <div class="inspector-metrics">
+              <div><span>Potencia</span><strong id="inspectorPower"></strong></div>
+              <div><span>Factor potencia</span><strong id="inspectorFp"></strong></div>
+              <div><span>Energía</span><strong id="inspectorEnergy"></strong></div>
+              <div><span>Agua</span><strong id="inspectorWater"></strong></div>
+            </div>
+
+            <div class="control-group">
+              <label for="inspectorZone">Zona de ubicación</label>
+              <select id="inspectorZone" onchange="cambiarZonaAparato()"></select>
+            </div>
+
+            <div class="control-group">
+              <label for="inspectorDuration">Duración al encender</label>
+              <div class="duration-controls">
+                <input id="inspectorDuration" type="number" min="1" max="1440" value="1" onchange="cambiarDuracionAparato()">
+                <select id="inspectorUnit" onchange="cambiarDuracionAparato()">
+                  <option value="1">min</option>
+                  <option value="60">h</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="zone-actions">
+              <button class="btn-zone btn-zona-on" onclick="encenderZonaDesdeInspector()">Encender zona</button>
+              <button class="btn-zone btn-zona-off" onclick="apagarZonaDesdeInspector()">Apagar zona</button>
+            </div>
+
+            <div class="inspector-actions">
+              <button id="inspectorDuplicate" class="btn-secondary" onclick="duplicarAparatoSeleccionado()">Duplicar</button>
+              <button id="inspectorDelete" class="btn-danger" onclick="eliminarAparatoSeleccionado()">Eliminar</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="card">
+          <h2>Aparatos activos ahora</h2>
+          <div class="active-list" id="activeList">Ninguno activo</div>
+        </article>
+      </aside>
+    </div>
+  </section>
+
+  <section id="panel-consumo" class="tab-panel" role="tabpanel" hidden>
+    <div class="grid-metrics">
+      <div class="card electric">
+        <h2><span class="icon">⚡</span> Consumo Eléctrico</h2>
+        <div class="gauge-wrap">
+          <div class="gauge" id="gaugeFP">
+            <div class="gauge-text">
+              <div class="val" id="fpVal">0.00</div>
+              <div class="lbl">Factor Potencia</div>
+            </div>
           </div>
         </div>
+        <div class="metric">
+          <span class="metric-label">Potencia Activa</span>
+          <span class="metric-value"><span id="pActiva">0.00</span><span class="unit">kW</span></span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Potencia Reactiva</span>
+          <span class="metric-value"><span id="pReactiva">0.00</span><span class="unit">kVAr</span></span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Energía hoy</span>
+          <span class="metric-value"><span id="energiaHoy">0.000</span><span class="unit">kWh</span></span>
+        </div>
+        <div class="alert alert-ok" id="elecAlert">✅ Consumo normal</div>
       </div>
-      <div class="metric">
-        <span class="metric-label">Potencia Activa</span>
-        <span class="metric-value"><span id="pActiva">0.00</span><span class="unit">kW</span></span>
+
+      <div class="card water">
+        <h2><span class="icon">💧</span> Consumo Hídrico</h2>
+        <div class="metric">
+          <span class="metric-label">Caudal instantáneo</span>
+          <span class="metric-value"><span id="caudal">0.0</span><span class="unit">L/min</span></span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Consumo hoy</span>
+          <span class="metric-value"><span id="aguaHoy">0.0</span><span class="unit">L</span></span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Presión red</span>
+          <span class="metric-value"><span id="presion">0.0</span><span class="unit">bar</span></span>
+        </div>
+        <div class="alert alert-ok" id="aguaAlert">✅ Sin fugas</div>
       </div>
-      <div class="metric">
-        <span class="metric-label">Potencia Reactiva</span>
-        <span class="metric-value"><span id="pReactiva">0.00</span><span class="unit">kVAr</span></span>
+
+      <div class="card thermal">
+        <h2><span class="icon">🔥</span> Consumo Térmico y Gas</h2>
+        <div class="metric">
+          <span class="metric-label">Energía térmica</span>
+          <span class="metric-value"><span id="termica">0.000</span><span class="unit">kWh</span></span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Consumo gas</span>
+          <span class="metric-value"><span id="gas">0.000</span><span class="unit">m³</span></span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Temperatura</span>
+          <span class="metric-value"><span id="temp">0.0</span><span class="unit">°C</span></span>
+        </div>
+        <div class="alert alert-ok" id="termAlert">✅ Caldera en reposo</div>
       </div>
-      <div class="metric">
-        <span class="metric-label">Energía hoy</span>
-        <span class="metric-value"><span id="energiaHoy">0.000</span><span class="unit">kWh</span></span>
-      </div>
-      <div class="alert alert-ok" id="elecAlert">✅ Consumo normal</div>
     </div>
 
-    <div class="card water">
-      <h2><span class="icon">💧</span> Consumo Hídrico</h2>
-      <div class="metric">
-        <span class="metric-label">Caudal instantáneo</span>
-        <span class="metric-value"><span id="caudal">0.0</span><span class="unit">L/min</span></span>
+    <div class="card section-gap">
+      <h2><span class="icon">🗺️</span> Consumo instantáneo por zona</h2>
+      <div id="zonasStats" class="zonas-stats"></div>
+    </div>
+
+    <div class="card section-gap">
+      <h2>Descargar datos</h2>
+      <div class="export-actions">
+        <button class="btn-csv" onclick="exportarCSV()">CSV</button>
+        <button class="btn-xlsx" onclick="exportarExcelMultiHoja()">Excel simple (.xls)</button>
+        <button class="btn-xlsx purple" onclick="exportarExcelConGraficos()">Excel con gráficos (.xlsx)</button>
       </div>
-      <div class="metric">
-        <span class="metric-label">Consumo hoy</span>
-        <span class="metric-value"><span id="aguaHoy">0.0</span><span class="unit">L</span></span>
+    </div>
+  </section>
+
+  <section id="panel-graficas" class="tab-panel" role="tabpanel" hidden>
+    <div class="grid-charts">
+      <div class="card">
+        <h2><span class="icon">📈</span> Eléctrico · 24h</h2>
+        <div class="chart-container"><canvas id="chartElec"></canvas></div>
+        <div class="legend">
+          <span><span class="color-box" style="background:#334155"></span> Base casa (kW)</span>
+          <span><span class="color-box" style="background:#fbbf24"></span> Electrodomésticos (kW)</span>
+          <span><span class="color-box" style="background:#22c55e"></span> Factor de potencia (×100)</span>
+        </div>
+        <div class="stat-mini">
+          <div><span class="v" id="statElecMax">0</span><span class="l">Pico kW</span></div>
+          <div><span class="v" id="statElecAvg">0</span><span class="l">Media kW</span></div>
+          <div><span class="v" id="statElecTotal">0</span><span class="l">Total kWh</span></div>
+          <div><span class="v" id="statFPMin">0</span><span class="l">FP mínimo</span></div>
+        </div>
       </div>
-      <div class="metric">
-        <span class="metric-label">Presión red</span>
-        <span class="metric-value"><span id="presion">0.0</span><span class="unit">bar</span></span>
+
+      <div class="card">
+        <h2><span class="icon">📊</span> Hídrico · 24h</h2>
+        <div class="chart-container"><canvas id="chartWater"></canvas></div>
+        <div class="legend">
+          <span><span class="color-box" style="background:#38bdf8"></span> Base</span>
+          <span><span class="color-box" style="background:#0ea5e9"></span> Aparatos</span>
+          <span><span class="color-box" style="background:#f87171"></span> Posible fuga</span>
+        </div>
+        <div class="stat-mini">
+          <div><span class="v" id="statWaterMax">0</span><span class="l">Pico L/h</span></div>
+          <div><span class="v" id="statWaterAvg">0</span><span class="l">Media L/h</span></div>
+          <div><span class="v" id="statWaterTotal">0</span><span class="l">Total L</span></div>
+        </div>
       </div>
-      <div class="alert alert-ok" id="aguaAlert">✅ Sin fugas</div>
-    </div>
 
-    <div class="card thermal">
-      <h2><span class="icon">🔥</span> Consumo Térmico y Gas</h2>
-      <div class="metric">
-        <span class="metric-label">Energía térmica</span>
-        <span class="metric-value"><span id="termica">0.000</span><span class="unit">kWh</span></span>
+      <div class="card">
+        <h2><span class="icon">🔥</span> Térmico · 24h</h2>
+        <div class="chart-container"><canvas id="chartThermal"></canvas></div>
+        <div class="stat-mini">
+          <div><span class="v" id="statThermMax">0</span><span class="l">Pico kW</span></div>
+          <div><span class="v" id="statThermAvg">0</span><span class="l">Media kW</span></div>
+          <div><span class="v" id="statThermTotal">0</span><span class="l">Total kWh</span></div>
+          <div><span class="v" id="statGasTotal">0</span><span class="l">Total m³ gas</span></div>
+        </div>
       </div>
-      <div class="metric">
-        <span class="metric-label">Consumo gas</span>
-        <span class="metric-value"><span id="gas">0.000</span><span class="unit">m³</span></span>
+
+      <div class="card">
+        <h2><span class="icon">📊</span> Comparativa por zona</h2>
+        <div class="chart-container"><canvas id="chartZonas"></canvas></div>
+        <div class="legend">
+          <span><span class="color-box" style="background:#fbbf24"></span> Potencia activa (kW)</span>
+          <span><span class="color-box" style="background:#38bdf8"></span> Agua (L/h ÷ 10)</span>
+          <span><span class="color-box" style="background:#f87171"></span> Térmica (kW)</span>
+        </div>
       </div>
-      <div class="metric">
-        <span class="metric-label">Temperatura</span>
-        <span class="metric-value"><span id="temp">0.0</span><span class="unit">°C</span></span>
-      </div>
-      <div class="alert alert-ok" id="termAlert">✅ Caldera en reposo</div>
     </div>
-  </div>
-</div>
-
-<div class="card" style="margin-bottom:20px;">
-  <h2><span class="icon">🗺️</span> Consumo por zona</h2>
-  <div id="zonasStats" class="zonas-stats"></div>
-</div>
-
-<div class="grid-charts">
-
-  <div class="card">
-    <h2><span class="icon">📈</span> Eléctrico · 24h</h2>
-    <div class="chart-container"><canvas id="chartElec"></canvas></div>
-    <div class="legend">
-      <span><span class="color-box" style="background:#334155"></span> Base casa (kW)</span>
-      <span><span class="color-box" style="background:#fbbf24"></span> Electrodomésticos (kW)</span>
-      <span><span class="color-box" style="background:#22c55e"></span> Factor de potencia (×100)</span>
-    </div>
-    <div class="stat-mini">
-      <div><span class="v" id="statElecMax">0</span><span class="l">Pico kW</span></div>
-      <div><span class="v" id="statElecAvg">0</span><span class="l">Media kW</span></div>
-      <div><span class="v" id="statElecTotal">0</span><span class="l">Total kWh</span></div>
-      <div><span class="v" id="statFPMin">0</span><span class="l">FP mínimo</span></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2><span class="icon">📊</span> Hídrico · 24h</h2>
-    <div class="chart-container"><canvas id="chartWater"></canvas></div>
-    <div class="legend">
-      <span><span class="color-box" style="background:#38bdf8"></span> Base</span>
-      <span><span class="color-box" style="background:#0ea5e9"></span> Aparatos</span>
-      <span><span class="color-box" style="background:#f87171"></span> Posible fuga</span>
-    </div>
-    <div class="stat-mini">
-      <div><span class="v" id="statWaterMax">0</span><span class="l">Pico L/h</span></div>
-      <div><span class="v" id="statWaterAvg">0</span><span class="l">Media L/h</span></div>
-      <div><span class="v" id="statWaterTotal">0</span><span class="l">Total L</span></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2><span class="icon">🔥</span> Térmico · 24h</h2>
-    <div class="chart-container"><canvas id="chartThermal"></canvas></div>
-    <div class="stat-mini">
-      <div><span class="v" id="statThermMax">0</span><span class="l">Pico kW</span></div>
-      <div><span class="v" id="statThermAvg">0</span><span class="l">Media kW</span></div>
-      <div><span class="v" id="statThermTotal">0</span><span class="l">Total kWh</span></div>
-      <div><span class="v" id="statGasTotal">0</span><span class="l">Total m³ gas</span></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2><span class="icon">📊</span> Comparativa por zona</h2>
-    <div class="chart-container"><canvas id="chartZonas"></canvas></div>
-    <div class="legend">
-      <span><span class="color-box" style="background:#fbbf24"></span> Potencia activa (kW)</span>
-      <span><span class="color-box" style="background:#38bdf8"></span> Agua (L/h ÷ 10)</span>
-      <span><span class="color-box" style="background:#f87171"></span> Térmica (kW)</span>
-    </div>
-  </div>
-
-</div>
+  </section>
+</main>
 
 <script src="js/zonas.js"></script>
 <script src="js/app.js"></script>
