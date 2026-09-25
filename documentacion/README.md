@@ -68,7 +68,7 @@ demanda      = baseElec[h] + suma(potencias de aparatos encendidos)
 generación   = PERFIL_SOLAR[h] (si solar ON) + potenciaGeneracion (si diésel ON)
 importación  = max(0, demanda − generación)     → se compra a la red
 excedente    = max(0, generación − demanda)     → se vierte a la red
-reactiva     = importación · tan(acos(FP))
+reactiva     = demanda · tan(acos(FP))
 gasoleo      = potenciaDiésel · litrosGasoleoPorKwh · (1/60)  por minuto
 gas (m³)     = energíaTérmica / 10,5
 ```

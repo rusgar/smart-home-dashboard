@@ -1194,6 +1194,10 @@ main {
   color: #fb923c;
 }
 
+.excess-metric .metric-value {
+  color: #4ade80;
+}
+
 .plant-tabs {
   flex-wrap: wrap;
 }

@@ -382,7 +382,10 @@ la clase `active` y `aria-selected` de los botones, oculta/muestra los
 ### `togglePlay()` — línea 704
 
 Arranca/pausa la simulación. Si estaba al final del día (23:59) primero llama a
-`resetAll()`. Actualiza texto y clase del botón `#btnPlay`.
+`resetAll()`. Actualiza texto y clase del botón `#btnPlay`. Al **pausar** vacía
+`accumMinutos` y llama a `updateUI()`, para que el reloj y las métricas queden
+exactamente en el estado real (sin el desfase de hasta 250 ms de la
+actualización por frame).
 
 ### `setSpeed(s, btn)` — línea 717
 
@@ -438,17 +441,20 @@ Flujo:
 
 ## 11. UI y estadísticas
 
-### `updateUI()` — línea 826
+### `updateUI()` — línea 828
 
 Actualiza toda la interfaz cada 250 ms durante la reproducción (y tras cualquier
 acción). No escribe en los arrays horarios (eso lo hace `avanzarMinuto()`), solo
 lee y pinta:
 
 - Recalcula potencias instantáneas: `pDemanda`, `pSolar`, `pDiesel`,
-  `pActiva = max(0, demanda − generación)` y reactiva
-  `pActiva · tan(acos(FP))`.
-- Reloj `#clock` y métricas `#demandaActual`, `#pActiva`, `#pReactiva`,
-  `#fpVal`, `#energiaHoy`, `#solarGenerada`, `#dieselGenerada`,
+  `pActiva = max(0, demanda − generación)`,
+  `pExcedente = max(0, generación − demanda)` y reactiva
+  `pDemanda · tan(acos(FP))` (se calcula sobre la **demanda** de la vivienda,
+  no sobre la importación, para que no se ponga a 0 solo porque la generación
+  cubra la casa).
+- Reloj `#clock` y métricas `#demandaActual`, `#excedenteActual`, `#pActiva`,
+  `#pReactiva`, `#fpVal`, `#energiaHoy`, `#solarGenerada`, `#dieselGenerada`,
   `#importRed`, `#gasoleoTotal`.
 - **Anillo de FP** `#gaugeFP`: `conic-gradient` con color por tramo
   (verde ≥0,92 / ámbar ≥0,85 / rojo <0,85).
@@ -561,7 +567,7 @@ inicial (`on = siempreOn || generacionAutomatica`, temporizadores y acumulados a
 
 ## 14. Lectura de datos por hora
 
-### `obtenerDatosHora(h)` — línea 1454 · **fuente única de verdad**
+### `obtenerDatosHora(h)` — línea 1458 · **fuente única de verdad**
 
 Devuelve un objeto con todos los valores de la hora `h`, resolviendo de dónde
 sale cada dato:
@@ -572,7 +578,8 @@ sale cada dato:
   hay; si no, el instantáneo actual (hora actual) o una proyección con el
   perfil/estado de los generadores (horas futuras).
 - Deriva: `generacion`, `importacion = max(0, demanda − generación)`,
-  `excedente = max(0, generación − demanda)`, `reactiva`, `gas = térmica/10,5`.
+  `excedente = max(0, generación − demanda)`,
+  `reactiva = demanda · tan(acos(FP))`, `gas = térmica/10,5`.
 - Energías acumuladas del día para esa hora: `energiaDemanda`, `energiaSolar`,
   `energiaDiesel`, `energiaImportada`, `energiaExcedente`.
 - `gasoleo`: energía diésel de la hora × `litrosGasoleoPorKwh`.

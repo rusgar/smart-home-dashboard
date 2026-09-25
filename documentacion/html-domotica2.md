@@ -145,6 +145,7 @@ Los `<button>` de cada equipo, los recuadros de zona y las etiquetas se crean
 | `solarGenerada` | Generación solar acumulada (kWh). |
 | `dieselGenerada` | Generación diésel acumulada (kWh). |
 | `importRed` | Energía importada de la red (kWh). |
+| `excedenteActual` | Excedente vertido ahora mismo (kW). Explica por qué la importación instantánea puede ser 0. |
 | `gasoleoTotal` | Gasóleo consumido (L). |
 
 ### 6.3 Consumo Hídrico (`.card.water`)

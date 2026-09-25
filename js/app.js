@@ -711,6 +711,8 @@ function togglePlay() {
   } else {
     btn.textContent = '▶ Continuar';
     btn.className = 'btn-play';
+    accumMinutos = 0;
+    updateUI();
   }
 }
 
@@ -835,7 +837,8 @@ function updateUI() {
   const pGeneracion = pSolar + pDiesel;
   const pActiva = Math.max(0, pDemanda - pGeneracion);
   const fp = state.fp[h] || 0.95;
-  const pReactiva = pActiva * Math.tan(Math.acos(Math.min(fp, 0.999)));
+  const pReactiva = pDemanda * Math.tan(Math.acos(Math.min(fp, 0.999)));
+  const pExcedente = Math.max(0, pGeneracion - pDemanda);
   state.demandaActual = pDemanda;
   state.potenciaCargaActual = pAp;
   state.generacionSolarActual = pSolar;
@@ -846,6 +849,7 @@ function updateUI() {
     String(h).padStart(2, '0') + ':' + String(state.minute).padStart(2, '0');
 
   document.getElementById('demandaActual').textContent = pDemanda.toFixed(2);
+  document.getElementById('excedenteActual').textContent = pExcedente.toFixed(3);
   document.getElementById('pActiva').textContent = pActiva.toFixed(2);
   document.getElementById('pReactiva').textContent = pReactiva.toFixed(2);
   document.getElementById('fpVal').textContent = fp.toFixed(2);
@@ -1472,7 +1476,7 @@ function obtenerDatosHora(h) {
   const importacion = Math.max(0, demanda - generacion);
   const excedente = Math.max(0, generacion - demanda);
   const fp = state.fp[h] || 0.95;
-  const reactiva = importacion * Math.tan(Math.acos(Math.min(fp, 0.999)));
+  const reactiva = demanda * Math.tan(Math.acos(Math.min(fp, 0.999)));
   const aguaBase = state.baseAgua[h];
   const aguaAp = usaEstadoSimulado ? state.apPotenciaAgua[h] : state.potenciaAguaActual;
   const aguaTotal = aguaBase + aguaAp;
