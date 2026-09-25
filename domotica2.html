@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Domótica 2 · Smart Home Dashboard</title>
+<link rel="stylesheet" href="css/styles.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🏠 Domótica 2 · Smart Home Dashboard</h1>
+    <div class="sub">Simula, enciende aparatos y descarga los datos a Excel</div>
+  </div>
+  <div class="clock-display" id="clock">00:00</div>
+</header>
+
+<div class="toolbar">
+  <button class="btn-play" id="btnPlay" onclick="togglePlay()">▶ Iniciar día</button>
+  <button class="btn-reset" onclick="resetAll()">🔄 Reiniciar</button>
+  <span class="toolbar-label">Velocidad:</span>
+  <button class="btn-speed" onclick="setSpeed(1, this)">1 min/s</button>
+  <button class="btn-speed active" onclick="setSpeed(5, this)">5 min/s</button>
+  <button class="btn-speed" onclick="setSpeed(15, this)">15 min/s</button>
+  <button class="btn-speed" onclick="setSpeed(60, this)">1 h/s</button>
+  <span class="toolbar-label" style="margin-left:12px;">Hora:</span>
+  <input type="range" id="hourSlider" min="0" max="23" value="0" step="1"
+         style="width:150px;" oninput="jumpToHour(this.value)">
+  <button class="btn-csv" onclick="exportarCSV()">📥 CSV</button>
+  <button class="btn-xlsx" onclick="exportarExcelMultiHoja()">📊 Excel simple (.xls)</button>
+  <button class="btn-xlsx" style="background:#7c3aed" onclick="exportarExcelConGraficos()">📈 Excel con gráficos (.xlsx)</button>
+</div>
+
+<div class="day-bar" id="dayBar"></div>
+
+<div class="layout">
+  <div class="card">
+    <h2><span class="icon">🔌</span> Electrodomésticos</h2>
+    <div id="applianceList"></div>
+    <h2 style="margin-top:20px;"><span class="icon">⏱️</span> Aparatos activos ahora</h2>
+    <div class="active-list" id="activeList">Ninguno activo</div>
+  </div>
+
+  <div class="grid-metrics">
+    <div class="card electric">
+      <h2><span class="icon">⚡</span> Consumo Eléctrico</h2>
+      <div class="gauge-wrap">
+        <div class="gauge" id="gaugeFP">
+          <div class="gauge-text">
+            <div class="val" id="fpVal">0.00</div>
+            <div class="lbl">Factor Potencia</div>
+          </div>
+        </div>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Potencia Activa</span>
+        <span class="metric-value"><span id="pActiva">0.00</span><span class="unit">kW</span></span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Potencia Reactiva</span>
+        <span class="metric-value"><span id="pReactiva">0.00</span><span class="unit">kVAr</span></span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Energía hoy</span>
+        <span class="metric-value"><span id="energiaHoy">0.000</span><span class="unit">kWh</span></span>
+      </div>
+      <div class="alert alert-ok" id="elecAlert">✅ Consumo normal</div>
+    </div>
+
+    <div class="card water">
+      <h2><span class="icon">💧</span> Consumo Hídrico</h2>
+      <div class="metric">
+        <span class="metric-label">Caudal instantáneo</span>
+        <span class="metric-value"><span id="caudal">0.0</span><span class="unit">L/min</span></span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Consumo hoy</span>
+        <span class="metric-value"><span id="aguaHoy">0.0</span><span class="unit">L</span></span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Presión red</span>
+        <span class="metric-value"><span id="presion">0.0</span><span class="unit">bar</span></span>
+      </div>
+      <div class="alert alert-ok" id="aguaAlert">✅ Sin fugas</div>
+    </div>
+
+    <div class="card thermal">
+      <h2><span class="icon">🔥</span> Consumo Térmico y Gas</h2>
+      <div class="metric">
+        <span class="metric-label">Energía térmica</span>
+        <span class="metric-value"><span id="termica">0.000</span><span class="unit">kWh</span></span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Consumo gas</span>
+        <span class="metric-value"><span id="gas">0.000</span><span class="unit">m³</span></span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Temperatura</span>
+        <span class="metric-value"><span id="temp">0.0</span><span class="unit">°C</span></span>
+      </div>
+      <div class="alert alert-ok" id="termAlert">✅ Caldera en reposo</div>
+    </div>
+  </div>
+</div>
+
+<div class="grid-charts">
+  <div class="card">
+    <h2><span class="icon">📈</span> Eléctrico · 24h</h2>
+    <div class="chart-container"><canvas id="chartElec"></canvas></div>
+    <div class="legend">
+      <span><span class="color-box" style="background:#334155"></span> Base casa (kW)</span>
+      <span><span class="color-box" style="background:#fbbf24"></span> Electrodomésticos (kW)</span>
+      <span><span class="color-box" style="background:#22c55e"></span> Factor de potencia (×100)</span>
+    </div>
+    <div class="stat-mini">
+      <div><span class="v" id="statElecMax">0</span><span class="l">Pico kW</span></div>
+      <div><span class="v" id="statElecAvg">0</span><span class="l">Media kW</span></div>
+      <div><span class="v" id="statElecTotal">0</span><span class="l">Total kWh</span></div>
+      <div><span class="v" id="statFPMin">0</span><span class="l">FP mínimo</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="icon">📊</span> Hídrico · 24h</h2>
+    <div class="chart-container"><canvas id="chartWater"></canvas></div>
+    <div class="legend">
+      <span><span class="color-box" style="background:#38bdf8"></span> Base</span>
+      <span><span class="color-box" style="background:#0ea5e9"></span> Aparatos</span>
+      <span><span class="color-box" style="background:#f87171"></span> Posible fuga</span>
+    </div>
+    <div class="stat-mini">
+      <div><span class="v" id="statWaterMax">0</span><span class="l">Pico L/h</span></div>
+      <div><span class="v" id="statWaterAvg">0</span><span class="l">Media L/h</span></div>
+      <div><span class="v" id="statWaterTotal">0</span><span class="l">Total L</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="icon">🔥</span> Térmico · 24h</h2>
+    <div class="chart-container"><canvas id="chartThermal"></canvas></div>
+    <div class="stat-mini">
+      <div><span class="v" id="statThermMax">0</span><span class="l">Pico kW</span></div>
+      <div><span class="v" id="statThermAvg">0</span><span class="l">Media kW</span></div>
+      <div><span class="v" id="statThermTotal">0</span><span class="l">Total kWh</span></div>
+      <div><span class="v" id="statGasTotal">0</span><span class="l">Total m³ gas</span></div>
+    </div>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
