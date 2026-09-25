@@ -102,39 +102,88 @@ function generarPerfilesBase() {
 function renderAparatos() {
   const cont = document.getElementById('applianceList');
   cont.innerHTML = '';
-  CATALOGO.forEach(a => {
-    const ap = aparatos[a.id];
-    const div = document.createElement('div');
-    div.className = 'appliance' + (ap.on ? ' on' : '');
-    div.innerHTML = `
-      <div class="emoji">${a.emoji}</div>
-      <div class="info">
-        <div class="name">${a.nombre}</div>
-        <div class="power">${a.potencia} kW · FP ${a.fp}</div>
-        <div class="timer-row">
-          <input type="number" min="1" max="1440" value="1" id="dur_${a.id}">
-          <select id="unit_${a.id}">
-            <option value="1">min</option>
-            <option value="60" >h</option>
-          </select>
-          <span class="status-badge" id="badge_${a.id}">${ap.on ? 'ON' : 'OFF'}</span>
+
+  PLANTAS.forEach(planta => {
+    // Cabecera de planta
+    const headerP = document.createElement('div');
+    headerP.className = 'planta-header';
+    headerP.innerHTML = `<span>${planta.icono}</span> ${planta.nombre}`;
+    cont.appendChild(headerP);
+
+    planta.zonas.forEach(idZona => {
+      const zona = ZONAS[idZona];
+      if (!zona) return;
+
+      // Aparatos de esta zona
+      const aparatosZona = Object.values(aparatos).filter(a => a.zona === idZona);
+      const encendidos = aparatosZona.filter(a => a.on).length;
+
+      // Cabecera de zona con botones de encender/apagar
+      const headerZ = document.createElement('div');
+      headerZ.className = 'zona-header';
+      headerZ.style.borderLeftColor = zona.color;
+      headerZ.innerHTML = `
+        <div class="zona-titulo">
+          <span>${zona.icono}</span>
+          <span>${zona.nombre}</span>
+          <span class="zona-contador">${encendidos}/${aparatosZona.length}</span>
         </div>
-      </div>
-      <button class="switch ${ap.on ? 'on' : ''}" onclick="toggleAparato('${a.id}')"></button>
-    `;
-    cont.appendChild(div);
+        <div class="zona-botones">
+          <button class="btn-zona btn-zona-on" onclick="encenderZona('${idZona}')" title="Encender toda la zona">⏻</button>
+          <button class="btn-zona btn-zona-off" onclick="apagarZona('${idZona}')" title="Apagar toda la zona">⏼</button>
+        </div>
+      `;
+      cont.appendChild(headerZ);
+
+      // Contenedor de aparatos
+      const gridZ = document.createElement('div');
+      gridZ.className = 'zona-aparatos';
+
+      aparatosZona.forEach(ap => {
+        const div = document.createElement('div');
+        div.className = 'appliance' + (ap.on ? ' on' : '');
+        div.style.borderLeftColor = zona.color;
+
+        const nombreMostrar = ap.numero > 1 ? `${ap.nombre} ${ap.numero}` : ap.nombre;
+
+        div.innerHTML = `
+          <div class="emoji">${ap.emoji}</div>
+          <div class="info">
+            <div class="name">${nombreMostrar}</div>
+            <div class="power">${ap.potencia} kW · FP ${ap.fp}</div>
+            <div class="timer-row">
+              <input type="number" min="1" max="1440" value="1" id="dur_${ap.idInstancia}">
+              <select id="unit_${ap.idInstancia}">
+                <option value="1" selected>min</option>
+                <option value="60">h</option>
+              </select>
+              <span class="status-badge" id="badge_${ap.idInstancia}">${ap.on ? 'ON' : 'OFF'}</span>
+            </div>
+          </div>
+          <div class="acciones">
+            <button class="switch ${ap.on ? 'on' : ''}" onclick="toggleAparato('${ap.idInstancia}')"></button>
+            ${ap.duplicable ? `<button class="btn-mini" onclick="duplicarAparato('${ap.idInstancia}')" title="Duplicar">➕</button>` : ''}
+            ${ap.numero > 1 ? `<button class="btn-mini btn-peligro" onclick="eliminarAparato('${ap.idInstancia}')" title="Eliminar">🗑️</button>` : ''}
+          </div>
+        `;
+        gridZ.appendChild(div);
+      });
+
+      cont.appendChild(gridZ);
+    });
   });
 }
 
-function toggleAparato(id) {
-  const ap = aparatos[id];
+function toggleAparato(idInstancia) {
+  const ap = aparatos[idInstancia];
+  if (!ap) return;
   if (ap.on) {
     ap.on = false;
     ap.minutosRestantes = 0;
     ap.duracionTotal = 0;
   } else {
-    const dur = parseFloat(document.getElementById('dur_' + id).value) || 1;
-    const unit = parseFloat(document.getElementById('unit_' + id).value) || 1;
+    const dur = parseFloat(document.getElementById('dur_' + idInstancia).value) || 1;
+    const unit = parseFloat(document.getElementById('unit_' + idInstancia).value) || 1;
     const minutos = dur * unit;
     ap.on = true;
     ap.minutosRestantes = minutos;
@@ -145,6 +194,106 @@ function toggleAparato(id) {
   updateUI();
 }
 
+// ================================================================
+// GESTIÓN DE ZONAS Y DUPLICADOS
+// ================================================================
+
+function duplicarAparato(idInstancia) {
+  const original = aparatos[idInstancia];
+  if (!original) return;
+  if (!original.duplicable) {
+    alert('Este aparato no se puede duplicar.');
+    return;
+  }
+  const idCat = original.idCatalogo;
+  contadorDuplicados[idCat] = (contadorDuplicados[idCat] || 1) + 1;
+  const nuevoId = `${idCat}_${contadorDuplicados[idCat]}`;
+  const nuevaInstancia = crearInstanciaAparato(
+    CATALOGO.find(c => c.id === idCat),
+    nuevoId,
+    contadorDuplicados[idCat]
+  );
+  nuevaInstancia.zona = original.zona; // hereda la zona del original
+  aparatos[nuevoId] = nuevaInstancia;
+  renderAparatos();
+  updateUI();
+}
+
+function eliminarAparato(idInstancia) {
+  const ap = aparatos[idInstancia];
+  if (!ap) return;
+  // No permitir borrar la instancia original del catálogo (la primera)
+  if (ap.numero === 1) {
+    alert('No puedes eliminar la instancia original. Solo puedes apagarla.');
+    return;
+  }
+  if (ap.on) {
+    alert('Apaga el aparato antes de eliminarlo.');
+    return;
+  }
+  delete aparatos[idInstancia];
+  renderAparatos();
+  updateUI();
+}
+
+function apagarZona(idZona) {
+  let apagados = 0;
+  Object.values(aparatos).forEach(ap => {
+    if (ap.zona === idZona && ap.on && !ap.siempreOn) {
+      ap.on = false;
+      ap.minutosRestantes = 0;
+      ap.duracionTotal = 0;
+      apagados++;
+    }
+  });
+  renderAparatos();
+  updateUI();
+  return apagados;
+}
+
+function encenderZona(idZona) {
+  Object.values(aparatos).forEach(ap => {
+    if (ap.zona === idZona && !ap.on && !ap.siempreOn) {
+      // Enciende con 1 min por defecto
+      const durInput = document.getElementById('dur_' + ap.idInstancia);
+      const unitInput = document.getElementById('unit_' + ap.idInstancia);
+      const dur = durInput ? parseFloat(durInput.value) || 1 : 1;
+      const unit = unitInput ? parseFloat(unitInput.value) || 1 : 1;
+      ap.on = true;
+      ap.minutosRestantes = dur * unit;
+      ap.duracionTotal = dur * unit;
+      ap.horaInicio = state.hour + state.minute / 60;
+    }
+  });
+  renderAparatos();
+  updateUI();
+}
+
+// Devuelve el consumo actual agregado por zona
+function getConsumoPorZona() {
+  const resultado = {};
+  Object.keys(ZONAS).forEach(z => {
+    resultado[z] = {
+      elec: 0,
+      agua: 0,
+      term: 0,
+      aparatosOn: 0,
+      aparatosTotal: 0
+    };
+  });
+  Object.values(aparatos).forEach(ap => {
+    const z = ap.zona;
+    if (!resultado[z]) return;
+    resultado[z].aparatosTotal++;
+    if (ap.on) {
+      resultado[z].elec += ap.potencia;
+      resultado[z].agua += ap.agua * 60; // L/h
+      resultado[z].term += ap.termica;
+      resultado[z].aparatosOn++;
+    }
+  });
+  return resultado;
+}
 // ================================================================
 // CONTROLES
 // ================================================================
@@ -175,13 +324,15 @@ function jumpToHour(h) {
 // ================================================================
 // AVANZAR MINUTO
 // ================================================================
+// ================================================================
+// AVANZAR MINUTO
+// ================================================================
 function avanzarMinuto() {
   const h = state.hour;
   let sumaElecAp = 0, sumaAguaAp = 0, sumaTermAp = 0;
   let fpPond = 0, pesoTot = 0;
 
-  CATALOGO.forEach(a => {
-    const ap = aparatos[a.id];
+  Object.values(aparatos).forEach(ap => {
     if (ap.on && ap.minutosRestantes > 0) {
       sumaElecAp += ap.potencia;
       sumaAguaAp += ap.agua * 60;
@@ -202,6 +353,22 @@ function avanzarMinuto() {
       }
     }
   });
+
+  state.apElec[h] += sumaElecAp / 60;
+  state.apAgua[h] += sumaAguaAp / 60;
+  state.apTerm[h] += sumaTermAp / 60;
+
+  if (pesoTot > 0) {
+    const fpEstaHora = fpPond / pesoTot;
+    state.fp[h] = (state.fp[h] + fpEstaHora) / 2;
+  }
+
+  const frac = 1 / 60;
+  state.energiaHoy += (state.baseElec[h] + state.apElec[h]) * frac;
+  state.aguaHoy += (state.baseAgua[h] + state.apAgua[h]) * frac;
+  state.termicaHoy += (state.baseTerm[h] + state.apTerm[h]) * frac;
+  state.gasHoy = state.termicaHoy / 10.5;
+}
 
   state.apElec[h] += sumaElecAp / 60;
   state.apAgua[h] += sumaAguaAp / 60;
@@ -307,16 +474,17 @@ function updateUI() {
 
 function updateActiveList() {
   const cont = document.getElementById('activeList');
-  const activos = CATALOGO.filter(a => aparatos[a.id].on);
+  const activos = Object.values(aparatos).filter(a => a.on);
   if (activos.length === 0) {
     cont.innerHTML = 'Ninguno activo';
     return;
   }
-  cont.innerHTML = activos.map(a => {
-    const ap = aparatos[a.id];
+  cont.innerHTML = activos.map(ap => {
+    const zona = ZONAS[ap.zona];
+    const nombreMostrar = ap.numero > 1 ? `${ap.nombre} ${ap.numero}` : ap.nombre;
     return `<div class="item">
-      <span>${a.emoji} ${a.nombre}</span>
-      <span class="t">${ap.minutosRestantes} min restantes</span>
+      <span>${zona.icono} ${nombreMostrar}</span>
+      <span class="t">${ap.minutosRestantes} min</span>
     </div>`;
   }).join('');
 }
@@ -368,6 +536,25 @@ function updateStats() {
   document.getElementById('statThermAvg').textContent = avgT.toFixed(2);
   document.getElementById('statThermTotal').textContent = state.termicaHoy.toFixed(1);
   document.getElementById('statGasTotal').textContent = state.gasHoy.toFixed(2);
+  // ---- Estadísticas por zona ----
+const consumoZonas = getConsumoPorZona();
+const contZonas = document.getElementById('zonasStats');
+if (contZonas) {
+  contZonas.innerHTML = Object.values(ZONAS).map(z => {
+    const c = consumoZonas[z.id];
+    return `
+      <div class="zona-stat" style="border-left-color: ${z.color}">
+        <div class="zona-stat-nombre">${z.icono} ${z.nombre}</div>
+        <div class="zona-stat-valores">
+          <span>⚡ ${c.elec.toFixed(2)} kW</span>
+          <span>💧 ${c.agua.toFixed(0)} L/h</span>
+          <span>🔥 ${c.term.toFixed(2)} kW</span>
+        </div>
+        <div class="zona-stat-activos">${c.aparatosOn} de ${c.aparatosTotal} activos</div>
+      </div>
+    `;
+  }).join('');
+}
 }
 
 // ================================================================
@@ -463,6 +650,76 @@ function drawCharts() {
 
   drawBarChart('chartWater', state.baseAgua, state.apAgua, '#38bdf8', '#0ea5e9', '#f87171', 90);
   drawBarChart('chartThermal', state.baseTerm, state.apTerm, '#f87171', '#fca5a5', null, null);
+  drawChartZonas();
+}
+
+function drawChartZonas() {
+  const canvas = document.getElementById('chartZonas');
+  if (!canvas) return;
+  const { ctx, w, h } = setupCanvas(canvas);
+  ctx.clearRect(0, 0, w, h);
+
+  const padL = 45, padR = 15, padT = 15, padB = 40;
+  const cw = w - padL - padR;
+  const ch = h - padT - padB;
+
+  const zonas = Object.values(ZONAS);
+  const consumo = getConsumoPorZona();
+
+  // Valor máximo para escalar
+  let maxVal = 0.5;
+  zonas.forEach(z => {
+    const c = consumo[z.id];
+    maxVal = Math.max(maxVal, c.elec, c.agua / 10, c.term);
+  });
+  maxVal = Math.ceil(maxVal * 2) / 2;
+
+  // Rejilla
+  ctx.strokeStyle = '#1e293b';
+  for (let i = 0; i <= 4; i++) {
+    const y = padT + (ch / 4) * i;
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(padL + cw, y);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#64748b';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const v = maxVal - (maxVal / 4) * i;
+    const y = padT + (ch / 4) * i;
+    ctx.fillText(v.toFixed(1), padL - 5, y + 3);
+  }
+
+  const numZonas = zonas.length;
+  const grupoW = cw / numZonas;
+  const barW = grupoW / 4;
+  const gap = 2;
+
+  zonas.forEach((z, i) => {
+    const c = consumo[z.id];
+    const xBase = padL + grupoW * i + grupoW / 2;
+
+    // 3 barras: elec, agua/10, term
+    const valores = [c.elec, c.agua / 10, c.term];
+    const colores = ['#fbbf24', '#38bdf8', '#f87171'];
+
+    valores.forEach((v, j) => {
+      const barH = (v / maxVal) * ch;
+      const x = xBase - (barW * 3 + gap * 2) / 2 + j * (barW + gap);
+      const y = padT + ch - barH;
+      ctx.fillStyle = colores[j];
+      ctx.fillRect(x, y, barW, barH);
+    });
+
+    // Etiqueta de zona
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(z.icono, xBase, h - 22);
+    ctx.fillText(z.nombre, xBase, h - 10);
+  });
 }
 
 function drawBarChart(canvasId, baseData, apData, colorBase, colorAp, colorAlert, alertThreshold) {
@@ -572,6 +829,7 @@ function loop(now) {
 // RESET
 // ================================================================
 function resetAll() {
+  // --- Resetear el estado temporal ---
   state.hour = 0;
   state.minute = 0;
   state.playing = false;
@@ -584,20 +842,23 @@ function resetAll() {
   state.termicaHoy = 0;
   state.gasHoy = 0;
 
+  // --- Eliminar TODOS los aparatos (originales + duplicados) ---
+  Object.keys(aparatos).forEach(k => delete aparatos[k]);
+  Object.keys(contadorDuplicados).forEach(k => delete contadorDuplicados[k]);
+
+  // --- Volver a crear SOLO las instancias originales del catálogo ---
   CATALOGO.forEach(a => {
-    aparatos[a.id].on = false;
-    aparatos[a.id].minutosRestantes = 0;
-    aparatos[a.id].duracionTotal = 0;
-    aparatos[a.id].energiaAcum = 0;
-    aparatos[a.id].aguaAcum = 0;
-    aparatos[a.id].termicaAcum = 0;
-    aparatos[a.id].horaInicio = null;
+    aparatos[a.id] = crearInstanciaAparato(a, a.id, 1);
   });
 
+  // --- Resetear el botón de play ---
   document.getElementById('btnPlay').textContent = '▶ Iniciar día';
   document.getElementById('btnPlay').className = 'btn-play';
 
+  // --- Regenerar perfiles base (variabilidad aleatoria) ---
   generarPerfilesBase();
+
+  // --- Refrescar la UI ---
   renderAparatos();
   updateUI();
 }
