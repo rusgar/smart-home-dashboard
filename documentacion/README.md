@@ -9,26 +9,27 @@ lógica de simulación, interfaz y exportaciones.
 |---|---|
 | [`js-zonas.md`](js-zonas.md) | **JavaScript** · `js/zonas.js`: constantes de datos (`PLANTAS`, `ZONAS`, `CATEGORIAS`, `CATALOGO`) y estructura de cada campo. |
 | [`js-app.md`](js-app.md) | **JavaScript** · `js/app.js`: estado global, modelo de instancias, persistencia, plano, simulación, UI, gráficas y exportaciones. Una entrada por función. |
-| [`html-domotica2.md`](html-domotica2.md) | **HTML** · `domotica2.html`: estructura completa, paneles, IDs de referencia y manejadores `onclick`. |
-| [`html-otros.md`](html-otros.md) | **HTML** · `domotica.html`, `domotica1.html` y `prueba.html`: versiones antiguas (legado) y por qué ya no se usan. |
+| [`html-index.md`](html-index.md) | **HTML** · `index.html`: estructura completa, paneles, IDs de referencia y manejadores `onclick`. |
+| [`html-otros.md`](html-otros.md) | **HTML** · `legacy/domotica.html`, `legacy/domotica1.html` y `legacy/prueba.html`: versiones antiguas (legado) y por qué ya no se usan. |
 
 ## Estructura del proyecto
 
 ```
 smart-home-dashboard/
-├── domotica2.html          ← aplicación activa
-├── css/styles.css          ← estilos (tema oscuro)
-├── js/zonas.js             ← DATOS: plantas, zonas y catálogo de equipos
-├── js/app.js               ← LÓGICA: simulación, render y exportación
-├── domotica.html           ← versión anterior (legado, no se modifica)
-├── domotica1.html          ← versión anterior (legado, no se modifica)
-├── prueba.html             ← pruebas sueltas (legado, no se modifica)
-└── documentacion/          ← esta documentación
+├── index.html               ← aplicación activa (entrada para Netlify)
+├── css/styles.css           ← estilos (tema oscuro)
+├── js/zonas.js              ← DATOS: plantas, zonas y catálogo de equipos
+├── js/app.js                ← LÓGICA: simulación, render y exportación
+├── legacy/                  ← código heredado (no se modifica)
+│   ├── domotica.html
+│   ├── domotica1.html
+│   └── prueba.html
+└── documentacion/           ← esta documentación
 ```
 
 ## Orden de carga
 
-`domotica2.html` carga los scripts **al final del `body`**, en este orden:
+`index.html` carga los scripts **al final del `body`**, en este orden:
 
 1. `js/zonas.js` → define `PLANTAS`, `ZONAS`, `CATEGORIAS`, `CATALOGO` (globales).
 2. `js/app.js` → consume esas constantes, crea las instancias y arranca la app.

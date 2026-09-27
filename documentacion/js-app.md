@@ -5,7 +5,7 @@ bucle de simulación, gráficas y exportaciones.
 
 - Líneas: 1888
 - Depende de: `js/zonas.js` (`PLANTAS`, `ZONAS`, `CATEGORIAS`, `CATALOGO`)
-- Depende del DOM de `domotica2.html` (IDs indicados en [`archivos-html.md`](archivos-html.md))
+- Depende del DOM de `index.html` (IDs indicados en [`html-index.md`](html-index.md))
 
 **Índice**
 

@@ -1,4 +1,4 @@
-# `domotica2.html` — Estructura de la interfaz
+# `index.html` — Estructura de la interfaz
 
 Página única (304 líneas) que monta toda la UI. No contiene lógica: solo
 estructura y llamadas `onclick`/`onchange` a funciones globales definidas en
