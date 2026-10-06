@@ -5,12 +5,14 @@
 const aparatos = {};
 const contadorDuplicados = {};
 const CLAVE_DISTRIBUCION = 'smart-home-distribucion-v1';
+const ACS_KWH_POR_LITRO = 0.0465;
 
 CATALOGO.forEach(a => {
   aparatos[a.id] = crearInstanciaAparato(a, a.id, 1);
 });
 
 function crearInstanciaAparato(catalogoItem, idInstancia, numero) {
+  const encendido = !!(catalogoItem.siempreOn || catalogoItem.generacionAutomatica);
   return {
     ...catalogoItem,
     idInstancia: idInstancia,
@@ -20,14 +22,63 @@ function crearInstanciaAparato(catalogoItem, idInstancia, numero) {
     posX: Number.isFinite(catalogoItem.posX) ? catalogoItem.posX : 50,
     posY: Number.isFinite(catalogoItem.posY) ? catalogoItem.posY : 50,
     duracionMinutos: catalogoItem.fuente === 'diesel' ? 60 : 1,
-    on: !!(catalogoItem.siempreOn || catalogoItem.generacionAutomatica),
+    on: encendido,
     minutosRestantes: 0,
     duracionTotal: 0,
     energiaAcum: 0,
     aguaAcum: 0,
     termicaAcum: 0,
-    horaInicio: null
+    horaInicio: null,
+    minutosEncendido: 0,
+    ciclos: encendido ? 1 : 0,
+    periodos: [],
+    periodoAbierto: encendido ? nuevoPeriodo(0) : null
   };
+}
+
+function horaSimulada() {
+  return state.hour + state.minute / 60;
+}
+
+function formatoHoraDecimal(valor) {
+  if (valor === null || valor === undefined || Number.isNaN(valor)) return '--:--';
+  const total = Math.round(valor * 60);
+  const hh = Math.floor(total / 60) % 24;
+  const mm = total % 60;
+  return String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+}
+
+function nuevoPeriodo(desde) {
+  return { desde: desde, energia: 0, agua: 0, termica: 0 };
+}
+
+function abrirPeriodo(ap) {
+  ap.periodoAbierto = nuevoPeriodo(horaSimulada());
+}
+
+function cerrarPeriodo(ap) {
+  if (!ap.periodoAbierto) return;
+  ap.periodoAbierto.hasta = horaSimulada();
+  ap.periodos.push(ap.periodoAbierto);
+  ap.periodoAbierto = null;
+}
+
+function tramosAparato(ap) {
+  const tramos = ap.periodos.map(periodo => ({ periodo: periodo, hasta: periodo.hasta }));
+  if (ap.periodoAbierto) tramos.push({ periodo: ap.periodoAbierto, hasta: null });
+  return tramos;
+}
+
+function horarioAparato(ap) {
+  if (!ap) return '—';
+  const partes = tramosAparato(ap).map(tramo =>
+    `${formatoHoraDecimal(tramo.periodo.desde)}–${tramo.hasta === null ? 'en curso' : formatoHoraDecimal(tramo.hasta)}`
+  );
+  return partes.length ? partes.join(' · ') : '—';
+}
+
+function potenciaTermicaEquipo(ap) {
+  return ap.acs ? ap.agua * 60 * ACS_KWH_POR_LITRO : ap.termica;
 }
 
 // ================================================================
@@ -38,6 +89,7 @@ const state = {
   minute: 0,
   playing: false,
   speed: 1,
+  autoSim: false,
   tabActiva: 'plano',
   plantaActiva: 'baja',
   aparatoSeleccionado: null,
@@ -453,6 +505,9 @@ function renderInspector() {
   document.getElementById('inspectorEnergy').textContent = `${(ap.fuente === 'solar' ? state.solarHoy : ap.fuente === 'diesel' ? state.dieselHoy : ap.energiaAcum).toFixed(3)} kWh`;
   document.getElementById('inspectorResourceLabel').textContent = ap.fuente === 'diesel' ? 'Gasoleo' : ap.fuente === 'solar' ? 'Fuente' : 'Agua';
   document.getElementById('inspectorWater').textContent = ap.fuente === 'diesel' ? `${state.dieselLitrosHoy.toFixed(2)} L` : ap.fuente === 'solar' ? 'Solar' : `${ap.aguaAcum.toFixed(1)} L`;
+  document.getElementById('inspectorHorario').textContent = horarioAparato(ap);
+  document.getElementById('inspectorTiempo').textContent = `${ap.minutosEncendido} min`;
+  document.getElementById('inspectorCiclos').textContent = String(ap.ciclos);
 
   const interruptor = document.getElementById('inspectorSwitch');
   interruptor.className = `switch ${ap.on ? 'on' : ''}`;
@@ -511,6 +566,8 @@ function renderAparatos() {
 
 function activarAparato(ap) {
   ap.on = true;
+  abrirPeriodo(ap);
+  ap.ciclos += 1;
   if (ap.fuente === 'solar') {
     ap.minutosRestantes = 0;
     ap.duracionTotal = 0;
@@ -519,11 +576,12 @@ function activarAparato(ap) {
   }
   ap.minutosRestantes = ap.duracionMinutos;
   ap.duracionTotal = ap.duracionMinutos;
-  ap.horaInicio = state.hour + state.minute / 60;
+  ap.horaInicio = horaSimulada();
 }
 
 function desactivarAparato(ap) {
   ap.on = false;
+  cerrarPeriodo(ap);
   ap.minutosRestantes = 0;
   ap.duracionTotal = 0;
   ap.horaInicio = null;
@@ -660,6 +718,8 @@ function getConsumoPorZona() {
       agua: 0,
       term: 0,
       generacion: 0,
+      solar: 0,
+      diesel: 0,
       aparatosOn: 0,
       aparatosTotal: 0
     };
@@ -670,11 +730,14 @@ function getConsumoPorZona() {
     resultado[z].aparatosTotal++;
     if (ap.on) {
       if (ap.tipo === 'generacion') {
-        resultado[z].generacion += ap.fuente === 'solar' ? PERFIL_SOLAR[state.hour] : ap.potenciaGeneracion;
+        const pot = ap.fuente === 'solar' ? PERFIL_SOLAR[state.hour] : ap.potenciaGeneracion;
+        resultado[z].generacion += pot;
+        if (ap.fuente === 'solar') resultado[z].solar += pot;
+        else resultado[z].diesel += pot;
       } else {
         resultado[z].elec += ap.potencia;
         resultado[z].agua += ap.agua * 60;
-        resultado[z].term += ap.termica;
+        resultado[z].term += potenciaTermicaEquipo(ap);
       }
       resultado[z].aparatosOn++;
     }
@@ -730,6 +793,91 @@ function jumpToHour(h) {
   updateUI();
 }
 
+const PROB_ENCENDIDO = {
+  luz:      [0, 0, 0, 0, 0, 0, 0.03, 0.10, 0.10, 0.04, 0.03, 0.03, 0.05, 0.05, 0.03, 0.04, 0.06, 0.10, 0.18, 0.22, 0.22, 0.18, 0.12, 0.03],
+  clima:    [0.15, 0.12, 0.10, 0.10, 0.12, 0.15, 0.25, 0.35, 0.30, 0.20, 0.15, 0.15, 0.15, 0.15, 0.15, 0.20, 0.30, 0.40, 0.45, 0.45, 0.40, 0.35, 0.30, 0.20],
+  agua:     [0, 0, 0, 0, 0, 0, 0.05, 0.15, 0.20, 0.05, 0, 0, 0, 0, 0, 0, 0, 0.05, 0.10, 0.15, 0.20, 0.20, 0.10, 0.03],
+  electro:  [0, 0, 0, 0, 0, 0, 0.02, 0.05, 0.08, 0.06, 0.05, 0.08, 0.10, 0.05, 0.03, 0.04, 0.06, 0.10, 0.15, 0.15, 0.12, 0.10, 0.05, 0.01],
+  vent:     [0, 0, 0, 0, 0, 0, 0.02, 0.03, 0.05, 0.05, 0.05, 0.05, 0.08, 0.08, 0.08, 0.08, 0.08, 0.08, 0.10, 0.10, 0.10, 0.08, 0.05, 0.02],
+  garaje:   [0, 0, 0, 0, 0, 0, 0.02, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.03, 0.03, 0.03, 0.05, 0.08, 0.10, 0.10, 0.08, 0.05, 0.03, 0.01]
+};
+
+const DURACION_ALEATORIA = {
+  luz: [30, 120],
+  clima: [60, 180],
+  agua: [4, 8],
+  electro: [15, 90],
+  vent: [30, 120],
+  garaje: [10, 60]
+};
+
+const DURACION_POR_EQUIPO = {
+  microondas: [1, 5],
+  lavadora: [60, 90],
+  lavavajillas: [60, 120],
+  secadora: [40, 90],
+  horno: [20, 60],
+  ducha: [4, 8],
+  ducha_alta: [4, 8]
+};
+
+function duracionAleatoria(ap) {
+  const rango = DURACION_POR_EQUIPO[ap.idCatalogo]
+    || DURACION_ALEATORIA[ap.categoria]
+    || [15, 60];
+  return limitar(Math.round(rango[0] + Math.random() * (rango[1] - rango[0])), 1, 1440);
+}
+
+function toggleAutoSim() {
+  state.autoSim = !state.autoSim;
+  const btn = document.getElementById('btnAuto');
+  if (!btn) return;
+  btn.classList.toggle('active', state.autoSim);
+  btn.setAttribute('aria-pressed', String(state.autoSim));
+  btn.title = state.autoSim
+    ? 'Simulación automática ACTIVA: los equipos se encienden y apagan solos con horarios realistas'
+    : 'Enciende y apaga equipos solos con horarios realistas';
+}
+
+function simularAutomatica() {
+  const h = state.hour;
+  let cambio = false;
+  Object.values(aparatos).forEach(ap => {
+    if (ap.on || ap.siempreOn || ap.tipo === 'generacion' || ap.generacionAutomatica) return;
+    const tabla = PROB_ENCENDIDO[ap.categoria];
+    const probHora = tabla ? tabla[h] : 0;
+    const probMinuto = probHora > 0 ? 1 - Math.pow(1 - probHora, 1 / 60) : 0;
+    if (probMinuto > 0 && Math.random() < probMinuto) {
+      ap.duracionMinutos = duracionAleatoria(ap);
+      activarAparato(ap);
+      cambio = true;
+    }
+  });
+  return cambio;
+}
+
+function gestionarGeneracion() {
+  const diesel = aparatos.generador_diesel;
+  if (!diesel) return false;
+  const h = state.hour;
+  let potenciaCarga = 0;
+  Object.values(aparatos).forEach(ap => {
+    if (ap.on && ap.tipo !== 'generacion') potenciaCarga += ap.potencia;
+  });
+  const demanda = state.baseElec[h] + potenciaCarga;
+  const solar = aparatos.placas_solares && aparatos.placas_solares.on ? PERFIL_SOLAR[h] : 0;
+  const falta = Math.max(0, demanda - solar);
+  if (!diesel.on && falta > 1.5) {
+    activarAparato(diesel);
+    return true;
+  }
+  if (diesel.on && falta < 0.5) {
+    desactivarAparato(diesel);
+    return true;
+  }
+  return false;
+}
+
 // ================================================================
 // AVANZAR MINUTO
 // ================================================================
@@ -749,29 +897,40 @@ function avanzarMinuto() {
 
   Object.values(aparatos).forEach(ap => {
     if (!ap.on) return;
+    ap.minutosEncendido += 1;
 
     if (ap.fuente === 'solar') {
       generacionSolar += PERFIL_SOLAR[h];
+      if (ap.periodoAbierto) ap.periodoAbierto.energia += PERFIL_SOLAR[h] * frac;
     } else if (ap.fuente === 'diesel') {
       generacionDiesel += ap.potenciaGeneracion;
       litrosGasoleo += ap.potenciaGeneracion * ap.litrosGasoleoPorKwh * frac;
+      if (ap.periodoAbierto) ap.periodoAbierto.energia += ap.potenciaGeneracion * frac;
     } else {
+      const termicaEquipo = potenciaTermicaEquipo(ap);
       potenciaCarga += ap.potencia;
       potenciaAgua += ap.agua * 60;
-      potenciaTermica += ap.termica;
+      potenciaTermica += termicaEquipo;
       fpPonderado += ap.fp * ap.potencia;
       pesoFp += ap.potencia;
       ap.energiaAcum += ap.potencia * frac;
       ap.aguaAcum += ap.agua * 60 * frac;
-      ap.termicaAcum += ap.termica * frac;
+      ap.termicaAcum += termicaEquipo * frac;
+      if (ap.periodoAbierto) {
+        ap.periodoAbierto.energia += ap.potencia * frac;
+        ap.periodoAbierto.agua += ap.agua * 60 * frac;
+        ap.periodoAbierto.termica += termicaEquipo * frac;
+      }
     }
 
-    if (ap.fuente !== 'solar' && !ap.siempreOn) {
+    const controladoPorAuto = state.autoSim && ap.fuente === 'diesel';
+    if (ap.fuente !== 'solar' && !ap.siempreOn && !controladoPorAuto) {
       ap.minutosRestantes -= 1;
       if (ap.minutosRestantes <= 0) {
         ap.on = false;
         ap.minutosRestantes = 0;
         ap.horaInicio = null;
+        cerrarPeriodo(ap);
         cambioEstado = true;
       }
     }
@@ -819,6 +978,10 @@ function avanzarMinuto() {
   state.aguaHoy += (state.baseAgua[h] + potenciaAgua) * frac;
   state.termicaHoy += (state.baseTerm[h] + potenciaTermica) * frac;
   state.gasHoy = state.termicaHoy / 10.5;
+  if (state.autoSim) {
+    if (simularAutomatica()) cambioEstado = true;
+    if (gestionarGeneracion()) cambioEstado = true;
+  }
   return cambioEstado;
 }
 
@@ -853,6 +1016,8 @@ function updateUI() {
   document.getElementById('pActiva').textContent = pActiva.toFixed(2);
   document.getElementById('pReactiva').textContent = pReactiva.toFixed(2);
   document.getElementById('fpVal').textContent = fp.toFixed(2);
+  document.getElementById('baseElecNow').textContent = pBase.toFixed(2);
+  document.getElementById('apElecNow').textContent = pAp.toFixed(2);
   document.getElementById('energiaHoy').textContent = state.energiaHoy.toFixed(3);
   document.getElementById('solarGenerada').textContent = state.solarHoy.toFixed(3);
   document.getElementById('dieselGenerada').textContent = state.dieselHoy.toFixed(3);
@@ -868,7 +1033,12 @@ function updateUI() {
   document.getElementById('fpVal').style.color = color;
 
   const alertE = document.getElementById('elecAlert');
-  if (pDemanda > 4.5) {
+  const soloBase = Object.values(aparatos).every(ap => ap.tipo === 'generacion' || ap.siempreOn || !ap.on);
+  if (soloBase) {
+    const avisoFp = fp < 0.85 ? ' · FP crítico' : fp < 0.92 ? ' · FP bajo' : '';
+    alertE.className = fp < 0.85 ? 'alert alert-danger' : avisoFp ? 'alert alert-warn' : 'alert alert-ok';
+    alertE.textContent = (pGeneracion > 0 ? '☀️ Solo base · autoconsumo solar' : '🏠 Solo base de la vivienda') + avisoFp;
+  } else if (pDemanda > 4.5) {
     alertE.className = 'alert alert-danger';
     alertE.textContent = '🚨 Demanda muy elevada';
   } else if (fp < 0.85) {
@@ -892,21 +1062,30 @@ function updateUI() {
   }
 
   const potenciaAguaActual = Object.values(aparatos).reduce((total, ap) => total + (ap.on && ap.tipo !== 'generacion' ? ap.agua * 60 : 0), 0);
-  const potenciaTermicaActual = Object.values(aparatos).reduce((total, ap) => total + (ap.on && ap.tipo !== 'generacion' ? ap.termica : 0), 0);
+  const potenciaTermicaActual = Object.values(aparatos).reduce((total, ap) => total + (ap.on && ap.tipo !== 'generacion' ? potenciaTermicaEquipo(ap) : 0), 0);
   state.potenciaAguaActual = potenciaAguaActual;
   state.potenciaTermicaActual = potenciaTermicaActual;
   const agua = state.baseAgua[h] + potenciaAguaActual;
   document.getElementById('caudal').textContent = (agua / 60).toFixed(1);
+  document.getElementById('baseAguaNow').textContent = (state.baseAgua[h] / 60).toFixed(1);
+  document.getElementById('apAguaNow').textContent = (potenciaAguaActual / 60).toFixed(1);
   document.getElementById('aguaHoy').textContent = state.aguaHoy.toFixed(1);
   document.getElementById('presion').textContent = (3 + Math.sin(h) * 0.5).toFixed(1);
 
   const alertA = document.getElementById('aguaAlert');
-  if (agua > 90) {
+  const caudalLmin = agua / 60;
+  if (potenciaAguaActual === 0 && caudalLmin > 1) {
     alertA.className = 'alert alert-danger';
     alertA.textContent = '🚨 Posible fuga detectada';
-  } else if (agua > 60) {
+  } else if (caudalLmin > 20) {
+    alertA.className = 'alert alert-danger';
+    alertA.textContent = '🚨 Posible fuga detectada';
+  } else if (caudalLmin > 10) {
     alertA.className = 'alert alert-warn';
     alertA.textContent = '⚠️ Consumo elevado';
+  } else if (potenciaAguaActual === 0) {
+    alertA.className = 'alert alert-ok';
+    alertA.textContent = '✅ Sin fugas · solo base vivienda';
   } else {
     alertA.className = 'alert alert-ok';
     alertA.textContent = '✅ Sin fugas';
@@ -916,11 +1095,17 @@ function updateUI() {
   document.getElementById('termica').textContent = state.termicaHoy.toFixed(3);
   document.getElementById('gas').textContent = state.gasHoy.toFixed(4);
   document.getElementById('temp').textContent = (20 + Math.max(term, 0) * 5).toFixed(1);
+  document.getElementById('baseTermNow').textContent = state.baseTerm[h].toFixed(2);
+  document.getElementById('apTermNow').textContent = potenciaTermicaActual.toFixed(2);
 
   const alertT = document.getElementById('termAlert');
+  const conCaldera = Object.values(aparatos).some(ap => ap.on && ap.tipo !== 'generacion' && potenciaTermicaEquipo(ap) > 0);
   if (term > 4) {
     alertT.className = 'alert alert-warn';
     alertT.textContent = '⚠️ Alta demanda térmica';
+  } else if (!conCaldera) {
+    alertT.className = 'alert alert-ok';
+    alertT.textContent = '✅ Caldera en reposo · solo base';
   } else if (term > 0.5) {
     alertT.className = 'alert alert-ok';
     alertT.textContent = '🔥 Caldera activa';
@@ -1016,21 +1201,53 @@ function updateStats() {
   const consumoZonas = getConsumoPorZona();
   const contZonas = document.getElementById('zonasStats');
   if (contZonas) {
-    contZonas.innerHTML = Object.values(ZONAS).map(z => {
+    const hAhora = state.hour;
+    const baseZona = { elec: state.baseElec[hAhora], agua: state.baseAgua[hAhora], term: state.baseTerm[hAhora] };
+    const esFuente = {};
+    Object.values(ZONAS).forEach(z => {
+      esFuente[z.id] = Object.values(aparatos).some(ap => ap.zona === z.id && ap.tipo === 'generacion');
+    });
+    const potencias = [];
+    Object.keys(consumoZonas).forEach(k => {
+      potencias.push(esFuente[k] ? consumoZonas[k].generacion : consumoZonas[k].elec);
+    });
+    const maxPot = Math.max(1, ...potencias, baseZona.elec);
+    const tarjetaBase = `
+      <div class="zona-stat base-zone">
+        <div class="zona-stat-nombre">🏠 Base vivienda (siempre)</div>
+        <div class="zona-stat-valores">
+          <span>⚡ ${baseZona.elec.toFixed(2)} kW</span>
+          <span>💧 ${baseZona.agua.toFixed(0)} L/h</span>
+          <span>🔥 ${baseZona.term.toFixed(2)} kW</span>
+        </div>
+        <div class="zona-stat-barra"><i class="barra-base" style="width: ${Math.max(2, Math.round(baseZona.elec / maxPot * 100))}%"></i></div>
+        <div class="zona-stat-activos">Media de todas las zonas · no depende de los equipos</div>
+      </div>`;
+    const tarjetas = Object.values(ZONAS).map(z => {
       const c = consumoZonas[z.id];
-      const recurso = c.generacion > 0
-        ? `<span class="source-value">⚡ Genera ${c.generacion.toFixed(2)} kW</span>`
-        : `<span>⚡ ${c.elec.toFixed(2)} kW</span>
-           <span>💧 ${c.agua.toFixed(0)} L/h</span>
-           <span>🔥 ${c.term.toFixed(2)} kW</span>`;
+      const fuente = esFuente[z.id];
+      const potenciaTarjeta = fuente ? c.generacion : c.elec;
+      const pct = Math.round(potenciaTarjeta / maxPot * 100);
+      const lineas = [];
+      if (fuente) {
+        if (c.solar > 0) lineas.push(`<span class="source-value">☀️ ${c.solar.toFixed(2)} kW</span>`);
+        if (c.diesel > 0) lineas.push(`<span class="source-value">⛽ ${c.diesel.toFixed(2)} kW</span>`);
+        if (c.solar === 0 && c.diesel === 0) lineas.push(`<span class="source-value">☀️ Sin generación</span>`);
+      } else {
+        lineas.push(`<span>⚡ ${c.elec.toFixed(2)} kW</span>`);
+        lineas.push(`<span>💧 ${c.agua.toFixed(0)} L/h</span>`);
+        lineas.push(`<span>🔥 ${c.term.toFixed(2)} kW</span>`);
+      }
       return `
-        <div class="zona-stat ${c.generacion > 0 ? 'source-zone' : ''}" style="border-left-color: ${z.color}">
+        <div class="zona-stat ${c.aparatosOn > 0 ? 'activa' : ''} ${fuente ? 'source-zone' : ''}" style="border-left-color: ${z.color}">
           <div class="zona-stat-nombre">${z.icono} ${z.nombre}</div>
-          <div class="zona-stat-valores">${recurso}</div>
+          <div class="zona-stat-valores">${lineas.join('')}</div>
+          <div class="zona-stat-barra"><i style="width: ${Math.max(2, pct)}%; background: ${z.color}"></i></div>
           <div class="zona-stat-activos">${c.aparatosOn} de ${c.aparatosTotal} activos</div>
         </div>
       `;
-    }).join('');
+    });
+    contZonas.innerHTML = tarjetaBase + tarjetas.join('');
   }
 }
 
@@ -1438,13 +1655,18 @@ function resetAll() {
   state.importacionActual = 0;
 
   Object.values(aparatos).forEach(ap => {
-    ap.on = !!(ap.siempreOn || ap.generacionAutomatica);
+    const encendido = !!(ap.siempreOn || ap.generacionAutomatica);
+    ap.on = encendido;
     ap.minutosRestantes = 0;
     ap.duracionTotal = 0;
     ap.energiaAcum = 0;
     ap.aguaAcum = 0;
     ap.termicaAcum = 0;
     ap.horaInicio = null;
+    ap.minutosEncendido = 0;
+    ap.ciclos = encendido ? 1 : 0;
+    ap.periodos = [];
+    ap.periodoAbierto = encendido ? nuevoPeriodo(0) : null;
   });
 
   accumMinutos = 0;
@@ -1566,6 +1788,27 @@ function descargarArchivo(contenido, nombre, tipo) {
   URL.revokeObjectURL(url);
 }
 
+function filasRegistroEncendidos() {
+  const filas = [];
+  Object.values(aparatos).forEach(ap => {
+    tramosAparato(ap).forEach((tramo, indice) => {
+      const fin = tramo.hasta === null ? horaSimulada() : tramo.hasta;
+      filas.push({
+        ap: ap,
+        num: indice + 1,
+        desde: tramo.periodo.desde,
+        hasta: tramo.hasta,
+        duracion: Math.max(0, Math.round((fin - tramo.periodo.desde) * 60)),
+        energia: tramo.periodo.energia,
+        agua: tramo.periodo.agua,
+        termica: tramo.periodo.termica
+      });
+    });
+  });
+  filas.sort((a, b) => a.desde - b.desde);
+  return filas;
+}
+
 // ================================================================
 // EXPORTACIÓN A EXCEL MULTI-HOJA (SpreadsheetML .xls)
 // ================================================================
@@ -1608,6 +1851,9 @@ function exportarExcelMultiHoja() {
           <Cell ss:StyleID="header"><Data ss:Type="String">Agua (L)</Data></Cell>
           <Cell ss:StyleID="header"><Data ss:Type="String">Térmica (kWh)</Data></Cell>
           <Cell ss:StyleID="header"><Data ss:Type="String">Estado</Data></Cell>
+          <Cell ss:StyleID="header"><Data ss:Type="String">Horarios de encendido</Data></Cell>
+          <Cell ss:StyleID="header"><Data ss:Type="String">Tiempo encendido (min)</Data></Cell>
+          <Cell ss:StyleID="header"><Data ss:Type="String">Ciclos</Data></Cell>
         </Row>`;
 
   Object.values(aparatos).forEach(ap => {
@@ -1623,9 +1869,38 @@ function exportarExcelMultiHoja() {
         <Cell><Data ss:Type="Number">${ap.aguaAcum.toFixed(3)}</Data></Cell>
         <Cell><Data ss:Type="Number">${ap.termicaAcum.toFixed(4)}</Data></Cell>
         <Cell><Data ss:Type="String">${ap.on ? 'ACTIVO' : 'Apagado'}</Data></Cell>
+        <Cell><Data ss:Type="String">${horarioAparato(ap)}</Data></Cell>
+        <Cell><Data ss:Type="Number">${ap.minutosEncendido}</Data></Cell>
+        <Cell><Data ss:Type="Number">${ap.ciclos}</Data></Cell>
       </Row>`;
   });
   hojaAparatos += `</Table></Worksheet>`;
+
+  const cabecerasRegistro = [
+    'Activo', 'Zona', 'Tipo', 'Nº ciclo', 'Encendido', 'Apagado',
+    'Duración (min)', 'Energía (kWh)', 'Agua (L)', 'Térmica (kWh)'
+  ];
+  let hojaRegistro = `
+    <Worksheet ss:Name="Registro de encendidos">
+      <Table>
+        <Row>${cabecerasRegistro.map(cabecera => `<Cell ss:StyleID="header"><Data ss:Type="String">${cabecera}</Data></Cell>`).join('')}</Row>`;
+  filasRegistroEncendidos().forEach(fila => {
+    const ap = fila.ap;
+    hojaRegistro += `
+      <Row>
+        <Cell><Data ss:Type="String">${ap.nombre}${ap.numero > 1 ? ' ' + ap.numero : ''}</Data></Cell>
+        <Cell><Data ss:Type="String">${ZONAS[ap.zona]?.nombre || 'Sin zona'}</Data></Cell>
+        <Cell><Data ss:Type="String">${ap.tipo === 'generacion' ? `Generación ${ap.fuente}` : 'Consumo'}</Data></Cell>
+        <Cell><Data ss:Type="Number">${fila.num}</Data></Cell>
+        <Cell><Data ss:Type="String">${formatoHoraDecimal(fila.desde)}</Data></Cell>
+        <Cell><Data ss:Type="String">${fila.hasta === null ? 'en curso' : formatoHoraDecimal(fila.hasta)}</Data></Cell>
+        <Cell><Data ss:Type="Number">${fila.duracion}</Data></Cell>
+        <Cell><Data ss:Type="Number">${fila.energia.toFixed(4)}</Data></Cell>
+        <Cell><Data ss:Type="Number">${fila.agua.toFixed(3)}</Data></Cell>
+        <Cell><Data ss:Type="Number">${fila.termica.toFixed(4)}</Data></Cell>
+      </Row>`;
+  });
+  hojaRegistro += `</Table></Worksheet>`;
 
   const fpValidos = state.fp.filter(v => v > 0);
   const fpMedio = fpValidos.reduce((a, b) => a + b, 0) / (fpValidos.length || 1);
@@ -1703,6 +1978,7 @@ function exportarExcelMultiHoja() {
   ${estilos}
   ${hojaDatos}
   ${hojaAparatos}
+  ${hojaRegistro}
   ${hojaResumen}
   ${hojaGraficos}
 </Workbook>`;
@@ -1777,6 +2053,9 @@ async function exportarExcelConGraficos() {
     { header: 'Agua (L)', key: 'a', width: 12 },
     { header: 'Térmica (kWh)', key: 't', width: 15 },
     { header: 'Estado', key: 's', width: 12 },
+    { header: 'Horarios de encendido', key: 'hor', width: 45 },
+    { header: 'Tiempo encendido (min)', key: 'min', width: 21 },
+    { header: 'Ciclos', key: 'cic', width: 9 },
   ];
   ws2.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
   ws2.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
@@ -1793,6 +2072,41 @@ async function exportarExcelConGraficos() {
       a: +ap.aguaAcum.toFixed(3),
       t: +ap.termicaAcum.toFixed(4),
       s: ap.on ? 'ACTIVO' : 'Apagado',
+      hor: horarioAparato(ap),
+      min: ap.minutosEncendido,
+      cic: ap.ciclos,
+    });
+  });
+
+  const wsReg = wb.addWorksheet('Registro de encendidos');
+  wsReg.columns = [
+    { header: 'Activo', key: 'n', width: 24 },
+    { header: 'Zona', key: 'z', width: 17 },
+    { header: 'Tipo', key: 'tipo', width: 18 },
+    { header: 'Nº ciclo', key: 'num', width: 10 },
+    { header: 'Encendido', key: 'enc', width: 12 },
+    { header: 'Apagado', key: 'apa', width: 12 },
+    { header: 'Duración (min)', key: 'dur', width: 15 },
+    { header: 'Energía (kWh)', key: 'e', width: 14 },
+    { header: 'Agua (L)', key: 'a', width: 11 },
+    { header: 'Térmica (kWh)', key: 't', width: 14 },
+  ];
+  wsReg.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  wsReg.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+
+  filasRegistroEncendidos().forEach(fila => {
+    const ap = fila.ap;
+    wsReg.addRow({
+      n: ap.nombre + (ap.numero > 1 ? ' ' + ap.numero : ''),
+      z: ZONAS[ap.zona] ? ZONAS[ap.zona].nombre : ap.zona,
+      tipo: ap.tipo === 'generacion' ? `Generación ${ap.fuente}` : 'Consumo',
+      num: fila.num,
+      enc: formatoHoraDecimal(fila.desde),
+      apa: fila.hasta === null ? 'en curso' : formatoHoraDecimal(fila.hasta),
+      dur: fila.duracion,
+      e: +fila.energia.toFixed(4),
+      a: +fila.agua.toFixed(3),
+      t: +fila.termica.toFixed(4),
     });
   });
 

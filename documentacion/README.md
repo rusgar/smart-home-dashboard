@@ -44,8 +44,9 @@ Antes, en el `<head>`, se carga ExcelJS desde CDN para la exportación `.xlsx`.
 | Término | Significado |
 |---|---|
 | **Catálogo (`CATALOGO`)** | Plantilla inmutable de un equipo: potencia, agua, FP, zona por defecto y posición por defecto. |
-| **Instancia (`aparatos[id]`)** | Ejemplar vivo de un catálogo: tiene estado (`on`), acumulados (`energiaAcum`), duración restante y posición en el plano. |
-| **Duplicado** | Instancia extra de un catálogo marcado `duplicable: true` (luces, enchufes, radiadores). Su ID es `idCatalogo_n`. |
+| **Instancia (`aparatos[id]`)** | Ejemplar vivo de un catálogo: tiene estado (`on`), acumulados (`energiaAcum`), duración restante, contadores de uso (`minutosEncendido`, `ciclos`) y **tramos de uso** (`periodos` con cada encendido–apagado del día y `periodoAbierto`) además de la posición en el plano. |
+| **Duplicado** | Instancia extra de un catálogo marcado `duplicable: true`. **Son duplicables los 22 equipos de consumo**; solo `placas_solares` y `generador_diesel` no. Su ID es `idCatalogo_n`. |
+| **Consumo base** | Perfil por hora de la casa vacía (`baseElec`, `baseAgua`, `baseTerm`): siempre presente y **visible** en las tarjetas y en la primera tarjeta de zonas, para que suba aunque no haya equipos encendidos. |
 | **Zona (`ZONAS`)** | Recuadro del plano: tiene geometría (`plano: {x,y,w,h}` en %), color, tipo de suelo y planta a la que pertenece. |
 | **Planta (`PLANTAS`)** | Nivel de la vivienda: `baja`, `alta`, `cubierta`. Agrupa listas de IDs de zonas. |
 | **Instancia original** | Aquella con `numero === 1`; no se puede eliminar, solo apagar. |
@@ -61,6 +62,13 @@ Antes, en el `<head>`, se carga ExcelJS desde CDN para la exportación `.xlsx`.
 - `obtenerDatosHora(h)` es la **única fuente de verdad** a la hora de leer una
   hora concreta: devuelve estado (`Simulado` / `Actual` / `Proyectado`) y todas
   las magnitudes. Gráficas, estadísticas y exportaciones usan esta función.
+- **🎲 Auto** (`state.autoSim`): modo opcional de simulación automática. Cada
+  minuto, cada equipo apagado tiene una probabilidad (por categoría y hora,
+  `PROB_ENCENDIDO`, expresada **por hora** y convertida a minuto) de encenderse
+  con una duración aleatoria; el apagado lo hace el temporizador normal, así
+  que las gráficas siguen siendo coherentes. Además, el **generador diésel**
+  se enciende solo si falta más de 1,5 kW (menos solar + cargas) y se apaga
+  por debajo de 0,5 kW.
 
 ## Fórmulas de balance energético
 
@@ -72,6 +80,7 @@ excedente    = max(0, generación − demanda)     → se vierte a la red
 reactiva     = demanda · tan(acos(FP))
 gasoleo      = potenciaDiésel · litrosGasoleoPorKwh · (1/60)  por minuto
 gas (m³)     = energíaTérmica / 10,5
+térmica ACS  = litros de agua · 0,0465   (duchas: agua × 60 × 0,0465 en kW)
 ```
 
 ## Convenciones
@@ -82,4 +91,14 @@ gas (m³)     = energíaTérmica / 10,5
 - Perfil solar en kW pico a las 12:00 (máximo 6,5 kW).
 - El frigorífico (`siempreOn`) y las placas solares (`generacionAutomatica`)
   arrancan encendidos y no se pueden apagar desde la interfaz.
-- El generador diésel arranca **apagado** y solo se enciende manualmente.
+- El generador diésel arranca **apagado**: se enciende a mano o
+  automáticamente en modo 🎲 Auto (faltan > 1,5 kW; se apaga al bajar de
+  0,5 kW).
+- Las potencias del catálogo están **recalibradas a valores realistas**
+  (standby ≤ 0,10 kW, LED 0,02–0,10 kW, climatización 1,10–1,50 kW,
+  electrodomésticos 1,00–2,50 kW y FP entre 0,70 y 0,99).
+- Ambos Excel incluyen por equipo los **Horarios de encendido** (lista de
+  tramos), el **tiempo encendido (min)** y los **ciclos** del día simulado, y
+  una hoja **Registro de encendidos** con **una fila por cada encendido**
+  (activo, ciclo, hora de encendido y apagado, duración, energía, agua y
+  térmica).

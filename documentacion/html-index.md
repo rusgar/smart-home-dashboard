@@ -1,6 +1,6 @@
 # `index.html` — Estructura de la interfaz
 
-Página única (304 líneas) que monta toda la UI. No contiene lógica: solo
+Página única (341 líneas) que monta toda la UI. No contiene lógica: solo
 estructura y llamadas `onclick`/`onchange` a funciones globales definidas en
 `js/app.js`.
 
@@ -29,28 +29,31 @@ estructura y llamadas `onclick`/`onchange` a funciones globales definidas en
 
 ---
 
-## 2. `<header>` (líneas 12–18)
+## 2. `<header>` (líneas 12–17)
 
 | Elemento | ID | Función |
 |---|---|---|
 | `h1` | — | Título de la aplicación. |
 | `.sub` | — | Bajada descriptiva. |
-| `.clock-display` | `clock` | Reloj simulado `HH:MM` (lo escribe `updateUI()`). |
+
+El reloj **no está aquí**: vive en la barra de herramientas (sección 3).
 
 ---
 
-## 3. Barra de herramientas (líneas 20–30)
+## 3. Barra de herramientas (líneas 19–31)
 
-Contenedor `.toolbar` con los controles de la simulación:
+Contenedor `.toolbar` (`position: sticky`) con los controles de la simulación:
 
 | Control | Atributos | Manejador |
 |---|---|---|
 | Botón play/pausa | `#btnPlay`, clase `btn-play` | `togglePlay()` |
 | Reiniciar día | clase `btn-reset` | `resetAll()` |
 | Velocidad 1 / 5 / 15 / 60 | 4 × `.btn-speed` (el primero `active`) | `setSpeed(n, this)` |
+| **🎲 Auto** | `#btnAuto`, clase `btn-auto` | `toggleAutoSim()`; la clase `active` y `aria-pressed` marcan el modo automático. |
 | Slider de hora | `#hourSlider` (`min=0 max=23 step=1`) | `jumpToHour(this.value)` (`oninput`) |
+| **Reloj** | `.clock-display` `#clock` | Reloj simulado `HH:MM`, 2 rem y alto contraste (lo escribe `updateUI()`). |
 
-### `dayBar` (línea 32)
+### `dayBar` (línea 33)
 
 `<div class="day-bar" id="dayBar"></div>` — contenedor vacío que
 `updateDayBar()` rellena con 24 casillas (una por hora), coloreadas según la
@@ -58,7 +61,7 @@ importación de la red y con la hora actual marcada.
 
 ---
 
-## 4. Pestañas (líneas 34–38)
+## 4. Pestañas (líneas 35–39)
 
 `<nav class="tabs" role="tablist">` con 3 botones `role="tab"`:
 
@@ -73,7 +76,7 @@ Los tres usan `onclick="setTab('id', this)"` y llevan `aria-selected` /
 
 ---
 
-## 5. `<main>` — Panel «Plano de la casa» (líneas 41–116)
+## 5. `<main>` — Panel «Plano de la casa» (líneas 41–336)
 
 `<section id="panel-plano" class="tab-panel active" role="tabpanel">`
 contiene una `.plan-layout` con plano a la izquierda y sidebar a la derecha.
@@ -107,7 +110,9 @@ Los `<button>` de cada equipo, los recuadros de zona y las etiquetas se crean
 | `inspectorPower` / `inspectorFp` | strong | Potencia (kW) y factor de potencia. |
 | `inspectorEnergyLabel` / `inspectorEnergy` | span/strong | "Energía" o "Generación" y su valor. |
 | `inspectorResourceLabel` / `inspectorWater` | span/strong | "Agua", "Gasoleo" o "Fuente". |
+| `inspectorHorario` / `inspectorTiempo` / `inspectorCiclos` | strong (bloque `.inspector-hoy`) | Uso de hoy del equipo: lista de tramos encendido–apagado, minutos encendidos y ciclos. |
 | `inspectorZone` | `<select>` | `onchange="cambiarZonaAparato()"`; las opciones las genera `renderInspector()`. |
+| Pista del select | `p.field-hint` | "Cambia aquí la zona, o arrastra directamente el equipo por el plano". |
 | `durationControl` | div | Bloque de duración; se oculta para el solar. |
 | `inspectorDuration` | `input[type=number]` (1–1440) | `onchange="cambiarDuracionAparato()"`. |
 | `inspectorUnit` | `<select>` (`1` min / `60` h) | `onchange="cambiarDuracionAparato()"`. |
@@ -122,7 +127,7 @@ Los `<button>` de cada equipo, los recuadros de zona y las etiquetas se crean
 
 ---
 
-## 6. Panel «Consumo» (líneas 118–217)
+## 6. Panel «Consumo» (líneas 126–254)
 
 `<section id="panel-consumo" class="tab-panel" hidden>` con `.grid-metrics`:
 
@@ -132,10 +137,12 @@ Los `<button>` de cada equipo, los recuadros de zona y las etiquetas se crean
 |---|---|
 | `gaugeFP` | Anillo `conic-gradient` del factor de potencia (lo pinta `updateUI()`). |
 | `fpVal` | Valor numérico del FP (cambia de color por tramo). |
+| `baseElecNow` | **Base de la vivienda** ahora mismo (kW), siempre presente. |
+| `apElecNow` | Suma de los equipos encendidos (kW). |
 | `pActiva` | Importación de red (kW). |
 | `pReactiva` | Potencia reactiva (kVAr). |
 | `energiaHoy` | Energía consumida hoy (kWh). |
-| `elecAlert` | Banda de alerta (normal / FP bajo / FP crítico / pico / autoconsumo). |
+| `elecAlert` | Banda de alerta (solo base / normal / FP bajo / FP crítico / pico / autoconsumo). |
 
 ### 6.2 Balance energético (`.card.generation`)
 
@@ -153,23 +160,29 @@ Los `<button>` de cada equipo, los recuadros de zona y las etiquetas se crean
 | ID | Contenido |
 |---|---|
 | `caudal` | Caudal instantáneo (L/min). |
+| `baseAguaNow` | Caudal de la base de la vivienda (L/min). |
+| `apAguaNow` | Caudal de los equipos encendidos (L/min). |
 | `aguaHoy` | Consumo de agua hoy (L). |
 | `presion` | Presión simulada (bar). |
-| `aguaAlert` | `Sin fugas` / `Consumo elevado` / `Posible fuga detectada`. |
+| `aguaAlert` | `Sin fugas` / `Sin fugas · solo base vivienda` / `Consumo elevado` / `Posible fuga detectada`. |
 
 ### 6.4 Consumo Térmico y Gas (`.card.thermal`)
 
 | ID | Contenido |
 |---|---|
+| `baseTermNow` | Demanda térmica de la base (kW). |
+| `apTermNow` | Demanda térmica de los equipos encendidos (kW); puede ser negativa si hay frío (A/C, frigorífico). |
 | `termica` | Energía térmica acumulada (kWh). |
 | `gas` | Gas equivalente (m³). |
 | `temp` | Temperatura estimada (°C). |
-| `termAlert` | `Caldera en reposo` / `Caldera activa` / `Alta demanda térmica`. |
+| `termAlert` | `Caldera en reposo` / `Caldera en reposo · solo base` / `Caldera activa` / `Alta demanda térmica`. |
 
 ### 6.5 Consumo instantáneo por zona
 
-- `#zonasStats` (`.zonas-stats`) → lo genera `updateStats()` con una tarjeta
-  por zona, con su color lateral.
+- Párrafo `.plan-hint` que explica que la primera tarjeta es la base.
+- `#zonasStats` (`.zonas-stats`) → lo genera `updateStats()`: primero la
+  tarjeta `🏠 Base vivienda (siempre)` y después una tarjeta por zona con
+  barra de proporción y nº de activos.
 
 ### 6.6 Descargar datos
 
@@ -181,7 +194,7 @@ Los `<button>` de cada equipo, los recuadros de zona y las etiquetas se crean
 
 ---
 
-## 7. Panel «Gráficas» (líneas 219–298)
+## 7. Panel «Gráficas» (líneas 256–335)
 
 `<section id="panel-graficas" class="tab-panel" hidden>` con `.grid-charts`.
 Cada tarjeta = `<canvas>` + leyenda de colores + `.stat-mini` con métricas.
@@ -199,7 +212,7 @@ Cada tarjeta = `<canvas>` + leyenda de colores + `.stat-mini` con métricas.
 
 ---
 
-## 8. Scripts (líneas 301–302)
+## 8. Scripts (líneas 338–339)
 
 ```html
 <script src="js/zonas.js"></script>
@@ -226,6 +239,7 @@ todas las llamadas a `document.getElementById(...)` funcionan.
 | `inspector*`, `durationControl` | `renderInspector()` |
 | `activeList` | `updateActiveList()` |
 | `btnPlay` | `togglePlay()`, `resetAll()`, `loop()` |
+| `btnAuto` (clase `active` y `aria-pressed`) | `toggleAutoSim()` |
 | `chartElec`, `chartGeneration`, `chartWater`, `chartThermal`, `chartZonas` | `drawCharts()` / `drawChartGeneration()` / `drawBarChart()` / `drawChartZonas()` |
 
 ## 10. Mapa de manejadores inline
@@ -235,6 +249,7 @@ todas las llamadas a `document.getElementById(...)` funcionan.
 | `onclick="togglePlay()"` | `togglePlay()` |
 | `onclick="resetAll()"` | `resetAll()` |
 | `onclick="setSpeed(n, this)"` | `setSpeed()` |
+| `onclick="toggleAutoSim()"` | `toggleAutoSim()` |
 | `oninput="jumpToHour(this.value)"` | `jumpToHour()` |
 | `onclick="setTab('x', this)"` | `setTab()` |
 | `onclick="restablecerPlano()"` | `restablecerPlano()` |

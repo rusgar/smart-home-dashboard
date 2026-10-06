@@ -14,7 +14,6 @@
     <h1>🏠 Domótica 2 · Smart Home Dashboard</h1>
     <div class="sub">Distribuye equipos, simula el consumo y compensa con energía solar y diésel</div>
   </div>
-  <div class="clock-display" id="clock">00:00</div>
 </header>
 
 <div class="toolbar" aria-label="Controles de simulación">
@@ -25,8 +24,10 @@
   <button class="btn-speed" onclick="setSpeed(5, this)">5 min/s</button>
   <button class="btn-speed" onclick="setSpeed(15, this)">15 min/s</button>
   <button class="btn-speed" onclick="setSpeed(60, this)">1 h/s</button>
+  <button class="btn-auto" id="btnAuto" onclick="toggleAutoSim()" aria-pressed="false" title="Enciende y apaga equipos solos con horarios realistas">🎲 Auto</button>
   <span class="toolbar-label slider-label">Hora:</span>
   <input type="range" id="hourSlider" min="0" max="23" value="0" step="1" oninput="jumpToHour(this.value)">
+  <div class="clock-display" id="clock" aria-live="off">00:00</div>
 </div>
 
 <div class="day-bar" id="dayBar"></div>
@@ -61,7 +62,7 @@
       <aside class="sidebar">
         <article class="card inspector-card">
           <h2>Activo seleccionado</h2>
-          <div id="emptyInspector" class="empty-inspector">Selecciona un equipo o activo energético en el plano para verlo aquí.</div>
+          <div id="emptyInspector" class="empty-inspector">👆 Selecciona un equipo del plano (o un activo energético) para ver aquí sus datos y controles.</div>
           <div id="inspectorContent" class="inspector-content" hidden>
             <div class="inspector-title">
               <span id="inspectorEmoji" class="inspector-emoji"></span>
@@ -79,9 +80,16 @@
               <div><span id="inspectorResourceLabel">Agua</span><strong id="inspectorWater"></strong></div>
             </div>
 
+            <div class="inspector-hoy">
+              <span>Horarios hoy <strong id="inspectorHorario">—</strong></span>
+              <span>Tiempo encendido <strong id="inspectorTiempo">0 min</strong></span>
+              <span>Ciclos <strong id="inspectorCiclos">0</strong></span>
+            </div>
+
             <div class="control-group">
               <label for="inspectorZone">Zona de ubicación</label>
               <select id="inspectorZone" onchange="cambiarZonaAparato()"></select>
+              <p class="field-hint">Cambia aquí la zona, o arrastra directamente el equipo por el plano.</p>
             </div>
 
             <div class="control-group" id="durationControl">
@@ -126,6 +134,14 @@
               <div class="lbl">Factor Potencia</div>
             </div>
           </div>
+        </div>
+        <div class="metric base-metric">
+          <span class="metric-label">Base vivienda (siempre)</span>
+          <span class="metric-value"><span id="baseElecNow">0.00</span><span class="unit">kW</span></span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Aparatos encendidos</span>
+          <span class="metric-value"><span id="apElecNow">0.00</span><span class="unit">kW</span></span>
         </div>
         <div class="metric">
           <span class="metric-label">Importación de red</span>
@@ -176,6 +192,14 @@
           <span class="metric-label">Caudal instantáneo</span>
           <span class="metric-value"><span id="caudal">0.0</span><span class="unit">L/min</span></span>
         </div>
+        <div class="metric base-metric">
+          <span class="metric-label">Base vivienda (siempre)</span>
+          <span class="metric-value"><span id="baseAguaNow">0.0</span><span class="unit">L/min</span></span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Aparatos encendidos</span>
+          <span class="metric-value"><span id="apAguaNow">0.0</span><span class="unit">L/min</span></span>
+        </div>
         <div class="metric">
           <span class="metric-label">Consumo hoy</span>
           <span class="metric-value"><span id="aguaHoy">0.0</span><span class="unit">L</span></span>
@@ -189,6 +213,14 @@
 
       <div class="card thermal">
         <h2><span class="icon">🔥</span> Consumo Térmico y Gas</h2>
+        <div class="metric base-metric">
+          <span class="metric-label">Base vivienda (siempre)</span>
+          <span class="metric-value"><span id="baseTermNow">0.00</span><span class="unit">kW</span></span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Aparatos encendidos</span>
+          <span class="metric-value"><span id="apTermNow">0.00</span><span class="unit">kW</span></span>
+        </div>
         <div class="metric">
           <span class="metric-label">Energía térmica</span>
           <span class="metric-value"><span id="termica">0.000</span><span class="unit">kWh</span></span>
@@ -207,6 +239,7 @@
 
     <div class="card section-gap">
       <h2><span class="icon">🗺️</span> Consumo instantáneo por zona</h2>
+      <p class="plan-hint">La primera tarjeta es la <strong>base de la vivienda</strong> (siempre presente, aunque no haya equipos encendidos). Las demás muestran los equipos de cada zona.</p>
       <div id="zonasStats" class="zonas-stats"></div>
     </div>
 

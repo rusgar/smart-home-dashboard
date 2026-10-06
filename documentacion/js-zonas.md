@@ -97,11 +97,11 @@ Es la fuente de verdad de la que `app.js` crea instancias.
 | `emoji` | string | Icono del badge. |
 | `nombre` | string | Nombre visible. |
 | `potencia` | number | Consumo eléctrico en **kW** (0 en generadores). |
-| `agua` | number | Caudal en **L/min** (8 en duchas; 0 el resto). Se convierte a L/h ×60. |
-| `fp` | number | Factor de potencia (0,85–0,99). |
-| `termica` | number | Aporte/refrigeración térmica en **kW** (negativo en aire acondicionado). |
+| `agua` | number | Caudal en **L/min** (8 en duchas, 0,7 en lavadora, 0,15 en lavavajillas; 0 en el resto). Se convierte a L/h ×60. |
+| `fp` | number | Factor de potencia (0,70–0,99): bajo en motores (frigorífico, ventilador) y microondas. |
+| `termica` | number | Aporte/refrigeración térmica en **kW** (negativo en aire acondicionado y frigorífico). En equipos `acs` se ignora: la térmica se deriva del agua. |
 | `zona` | string | ID de zona por defecto. |
-| `duplicable` | boolean | Si `true` se pueden crear copias desde el inspector. |
+| `duplicable` | boolean | Si `true` se pueden crear copias desde el inspector. **Los 22 equipos de consumo son duplicables**; solo `placas_solares` y `generador_diesel` no lo son. |
 | `posX`, `posY` | number | Posición por defecto en % del plano. |
 | `categoria` | string | Clave de `CATEGORIAS`. |
 
@@ -110,6 +110,7 @@ Es la fuente de verdad de la que `app.js` crea instancias.
 | Campo | Descripción |
 |---|---|
 | `siempreOn: true` | No se puede apagar (frigorífico). Arranca encendido. |
+| `acs: true` | Equipo de agua caliente sanitaria (duchas): su aporte térmico se calcula como `agua × 60 × 0,0465` kWh/L (calentamiento a 40 °C) en lugar de usar `termica`. |
 | `tipo: 'generacion'` | Marca el equipo como fuente de energía, no como carga. |
 | `fuente: 'solar' \| 'diesel'` | Tipo de generación. |
 | `potenciaGeneracion` | kW pico del generador (6,5 solar / 5 diésel). |
@@ -118,51 +119,59 @@ Es la fuente de verdad de la que `app.js` crea instancias.
 
 ### 4.3 Listado por zona
 
+Valores **realistas de vivienda** (recalibrados): standby y equipos de bajo
+consumo ≤ 0,10 kW, iluminación LED 0,02–0,10 kW, climatización 1,10–1,50 kW y
+electrodomésticos de ciclo 1,00–2,50 kW. **D** = duplicable.
+
+**Agua por equipo**: duchas 8 L/min (`acs`), lavadora 0,7 L/min (~50 L por
+ciclo), lavavajillas 0,15 L/min (~12 L por ciclo); el resto (incluida la
+secadora) no consume agua.
+
 **Planta baja · `salon`**
-| id | equipo | kW | FP | térmica | posX/posY |
-|---|---|---|---|---|---|
-| `tv` | Televisor | 0,15 | 0,92 | 0 | 36 / 20 |
-| `luces_salon` | Luces salón (duplicable) | 0,20 | 0,99 | 0,1 | 16 / 16 |
-| `aire_salon` | Aire acondicionado | 1,80 | 0,90 | −1,5 | 12 / 38 |
+| id | equipo | kW | FP | térmica | posX/posY | D |
+|---|---|---|---|---|---|---|
+| `tv` | Televisor 55" | 0,10 | 0,92 | 0 | 36 / 20 | ✔ |
+| `luces_salon` | Luces salón | 0,10 | 0,95 | 0,05 | 16 / 16 | ✔ |
+| `aire_salon` | Aire acondicionado | 1,10 | 0,95 | −2,0 | 12 / 38 | ✔ |
 
 **Planta baja · `cocina`**
-| id | equipo | kW | FP | térmica | posX/posY |
-|---|---|---|---|---|---|
-| `lavadora` | Lavadora | 2,0 | 0,85 | 0 | 56 / 19 |
-| `lavavajillas` | Lavavajillas | 1,5 | 0,88 | 0 | 68 / 19 |
-| `horno` | Horno | 2,5 | 0,95 | 2,2 | 56 / 39 |
-| `microondas` | Microondas | 1,2 | 0,95 | 0,5 | 68 / 39 |
-| `frigorifico` | Frigorífico (`siempreOn`) | 0,15 | 0,95 | −0,1 | 62 / 9 |
-| `luces_cocina` | Luces cocina (duplicable) | 0,15 | 0,99 | 0,1 | 70 / 9 |
+| id | equipo | kW | FP | térmica | posX/posY | D |
+|---|---|---|---|---|---|---|
+| `lavadora` | Lavadora | 2,00 | 0,85 | 0 | 56 / 19 | ✔ |
+| `lavavajillas` | Lavavajillas | 1,80 | 0,88 | 0 | 68 / 19 | ✔ |
+| `horno` | Horno eléctrico | 2,50 | 0,99 | 2,0 | 56 / 39 | ✔ |
+| `microondas` | Microondas | 1,00 | 0,80 | 0,3 | 68 / 39 | ✔ |
+| `frigorifico` | Frigorífico (`siempreOn`) | 0,08 | 0,72 | −0,1 | 62 / 9 | ✔ |
+| `luces_cocina` | Luces cocina | 0,06 | 0,95 | 0,03 | 70 / 9 | ✔ |
 
 **Planta baja · `bano`**
-| id | equipo | kW | agua | FP | posX/posY |
-|---|---|---|---|---|---|
-| `ducha` | Ducha (ACS) | 0,10 | 8 L/min | 0,98 | 88 / 20 |
-| `luces_bano` | Luces baño | 0,10 | 0 | 0,99 | 88 / 39 |
+| id | equipo | kW | agua | FP | posX/posY | D |
+|---|---|---|---|---|---|---|
+| `ducha` | Ducha (ACS, `acs`) | 0,10 | 8 L/min | 0,98 | 88 / 20 | ✔ |
+| `luces_bano` | Luces baño | 0,02 | 0 | 0,95 | 88 / 39 | ✔ |
 
 **Planta baja · `garaje`**
-| id | equipo | kW | FP | posX/posY |
-|---|---|---|---|---|
-| `secadora` | Secadora | 2,2 | 0,87 | 15 / 73 |
-| `enchufe_garaje` | Enchufe garaje (duplicable) | 0,6 | 0,92 | 35 / 73 |
-| `luces_garaje` | Luces garaje | 0,15 | 0,99 | 82 / 73 |
+| id | equipo | kW | FP | posX/posY | D |
+|---|---|---|---|---|---|
+| `secadora` | Secadora | 2,50 | 0,95 | 15 / 73 | ✔ |
+| `enchufe_garaje` | Enchufe garaje | 0,60 | 0,92 | 35 / 73 | ✔ |
+| `luces_garaje` | Luces garaje | 0,04 | 0,95 | 82 / 73 | ✔ |
 
 **Planta alta · `dormitorio`**
-| id | equipo | kW | FP | posX/posY |
-|---|---|---|---|---|
-| `luces_dorm` | Luces dormitorio 1 (duplicable) | 0,15 | 0,99 | 16 / 20 |
-| `radiador_dorm` | Radiador dormitorio 1 (duplicable) | 0,2 | 0,98 | 16 / 43 |
-| `ventilador` | Ventilador 1 | 0,05 | 0,95 | 16 / 68 |
+| id | equipo | kW | FP | posX/posY | D |
+|---|---|---|---|---|---|
+| `luces_dorm` | Luces dormitorio 1 | 0,03 | 0,95 | 16 / 20 | ✔ |
+| `radiador_dorm` | Radiador dormitorio 1 | 1,50 | 0,99 | 16 / 43 | ✔ |
+| `ventilador` | Ventilador 1 | 0,05 | 0,70 | 16 / 68 | ✔ |
 
 **Planta alta · `dormitorio2`** — mismo trío con IDs `luces_dorm2`,
 `radiador_dorm2`, `ventilador2` en `posX 46`.
 
 **Planta alta · `bano_alta`**
-| id | equipo | kW | agua | posX/posY |
-|---|---|---|---|---|
-| `ducha_alta` | Ducha (ACS) | 0,10 | 8 L/min | 72 / 20 |
-| `luces_bano_alta` | Luces baño | 0,10 | 0 | 86 / 40 |
+| id | equipo | kW | agua | posX/posY | D |
+|---|---|---|---|---|---|
+| `ducha_alta` | Ducha (ACS, `acs`) | 0,10 | 8 L/min | 72 / 20 | ✔ |
+| `luces_bano_alta` | Luces baño | 0,02 | 0 | 86 / 40 | ✔ |
 
 **Cubierta · `cubierta` (fuentes de generación)**
 | id | equipo | fuente | potencia | notas | posX/posY |

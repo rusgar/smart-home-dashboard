@@ -36,14 +36,17 @@ header .sub { font-size: 0.8rem; color: #94a3b8; }
 
 .clock-display {
   margin-left: auto;
-  font-size: 1.3rem;
-  font-weight: 700;
-  color: #38bdf8;
+  font-size: 2rem;
+  font-weight: 800;
+  color: #f8fafc;
   font-variant-numeric: tabular-nums;
-  background: #0f172a;
-  padding: 6px 16px;
-  border-radius: 10px;
-  border: 1px solid #334155;
+  background: #020617;
+  padding: 2px 18px;
+  border-radius: 12px;
+  border: 1px solid #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12), inset 0 0 14px rgba(56, 189, 248, 0.18);
+  letter-spacing: 1px;
+  line-height: 1.3;
 }
 
 /* ---------- Toolbar ---------- */
@@ -79,6 +82,8 @@ header .sub { font-size: 0.8rem; color: #94a3b8; }
 .btn-reset:hover { background: #dc2626; }
 .btn-speed { background: #334155; color: #e2e8f0; }
 .btn-speed.active { background: #38bdf8; color: #0f172a; }
+.btn-auto { background: #334155; color: #e2e8f0; }
+.btn-auto.active { background: #a855f7; color: white; box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.22); }
 .btn-csv { background: #16a34a; color: white; }
 .btn-csv:hover { background: #15803d; }
 .btn-xlsx { background: #7c3aed; color: white; }
@@ -291,6 +296,9 @@ header .sub { font-size: 0.8rem; color: #94a3b8; }
 .electric .metric-value { color: #fbbf24; }
 .water .metric-value { color: #38bdf8; }
 .thermal .metric-value { color: #f87171; }
+
+.base-metric .metric-label { color: #64748b; font-style: italic; }
+.base-metric .metric-value { color: #94a3b8; font-size: 1.05rem; }
 
 /* ---------- Alertas ---------- */
 .alert {
@@ -538,6 +546,35 @@ canvas {
   padding-top: 6px;
 }
 
+.zona-stat-barra {
+  margin-top: 8px;
+  height: 6px;
+  background: #1e293b;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.zona-stat-barra i {
+  display: block;
+  height: 100%;
+  min-width: 2%;
+  border-radius: 4px;
+  transition: width 0.35s ease;
+}
+
+.zona-stat-barra i.barra-base { background: #64748b; }
+
+.zona-stat.activa {
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.35);
+}
+
+.zona-stat.base-zone {
+  background: #0b1220;
+  border-left-color: #64748b;
+}
+
+.zona-stat.base-zone .zona-stat-nombre { color: #94a3b8; }
+
 main {
   width: 100%;
   max-width: 1540px;
@@ -626,7 +663,8 @@ main {
 }
 
 .tab-panel[hidden],
-.inspector-content[hidden] {
+.inspector-content[hidden],
+.empty-inspector[hidden] {
   display: none !important;
 }
 
@@ -1064,6 +1102,28 @@ main {
   font-size: 0.8rem;
 }
 
+.inspector-hoy {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: -8px 0 14px;
+  padding: 8px 10px;
+  border: 1px dashed #334155;
+  border-radius: 8px;
+  font-size: 0.68rem;
+  color: #64748b;
+}
+
+.inspector-hoy span {
+  min-width: 0;
+}
+
+.inspector-hoy strong {
+  color: #38bdf8;
+  margin-left: 4px;
+  overflow-wrap: anywhere;
+}
+
 .control-group {
   margin-top: 12px;
 }
@@ -1074,6 +1134,13 @@ main {
   color: #94a3b8;
   font-size: 0.7rem;
   font-weight: 700;
+}
+
+.field-hint {
+  margin-top: 6px;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: #64748b;
 }
 
 .control-group select,
