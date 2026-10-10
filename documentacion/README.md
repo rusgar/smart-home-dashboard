@@ -45,7 +45,7 @@ Antes, en el `<head>`, se carga ExcelJS desde CDN para la exportación `.xlsx`.
 |---|---|
 | **Catálogo (`CATALOGO`)** | Plantilla inmutable de un equipo: potencia, agua, FP, zona por defecto y posición por defecto. |
 | **Instancia (`aparatos[id]`)** | Ejemplar vivo de un catálogo: tiene estado (`on`), acumulados (`energiaAcum`), duración restante, contadores de uso (`minutosEncendido`, `ciclos`) y **tramos de uso** (`periodos` con cada encendido–apagado del día y `periodoAbierto`) además de la posición en el plano. |
-| **Duplicado** | Instancia extra de un catálogo marcado `duplicable: true`. **Son duplicables los 22 equipos de consumo**; solo `placas_solares` y `generador_diesel` no. Su ID es `idCatalogo_n`. |
+| **Duplicado** | Instancia extra de un catálogo marcado `duplicable: true`. **Son duplicables los 22 equipos de consumo**; solo `placas_solares` y `generador_diesel` no. Su ID es `idCatalogo_n`. No hay botón de duplicar en la interfaz: la copia se crea con `duplicarAparato()`. |
 | **Consumo base** | Perfil por hora de la casa vacía (`baseElec`, `baseAgua`, `baseTerm`): siempre presente y **visible** en las tarjetas y en la primera tarjeta de zonas, para que suba aunque no haya equipos encendidos. |
 | **Zona (`ZONAS`)** | Recuadro del plano: tiene geometría (`plano: {x,y,w,h}` en %), color, tipo de suelo y planta a la que pertenece. |
 | **Planta (`PLANTAS`)** | Nivel de la vivienda: `baja`, `alta`, `cubierta`. Agrupa listas de IDs de zonas. |
@@ -62,7 +62,8 @@ Antes, en el `<head>`, se carga ExcelJS desde CDN para la exportación `.xlsx`.
 - `obtenerDatosHora(h)` es la **única fuente de verdad** a la hora de leer una
   hora concreta: devuelve estado (`Simulado` / `Actual` / `Proyectado`) y todas
   las magnitudes. Gráficas, estadísticas y exportaciones usan esta función.
-- **🎲 Auto** (`state.autoSim`): modo opcional de simulación automática. Cada
+- **🎲 Auto (pruebas)** (`state.autoSim`): modo de pruebas (no usar en la
+  práctica) de simulación automática. Cada
   minuto, cada equipo apagado tiene una probabilidad (por categoría y hora,
   `PROB_ENCENDIDO`, expresada **por hora** y convertida a minuto) de encenderse
   con una duración aleatoria; el apagado lo hace el temporizador normal, así
@@ -94,6 +95,20 @@ térmica ACS  = litros de agua · 0,0465   (duchas: agua × 60 × 0,0465 en kW)
 - El generador diésel arranca **apagado**: se enciende a mano o
   automáticamente en modo 🎲 Auto (faltan > 1,5 kW; se apaga al bajar de
   0,5 kW).
+- El botón **«Reiniciar día»** abre un **modal de confirmación** («¿Reiniciar
+  el día?») antes de borrar el día; también se cierra con Escape o clicando
+  fuera.
+- **Sin persistencia**: la app no guarda nada en el navegador (ni posiciones ni
+  contadores); al cargar se borra la clave heredada de `localStorage`, así que
+  cada visita arranca de cero.
+- La tarjeta **«Aparatos activos ahora»** va **encima** del inspector y se
+  muestra con tipografía grande.
+- En la pestaña **Gráficas**, al pasar el ratón por las 4 gráficas de 24 h
+  (eléctrica, solar/diésel, hídrica y térmica) aparece un **crosshair** con la
+  hora exacta, el estado (`Simulado`/`Actual`/`Proyectado`) y los valores de esa
+  hora en un tooltip.
+- El botón **«Duplicar»** se ha eliminado del inspector (queda solo
+  «Eliminar»).
 - Las potencias del catálogo están **recalibradas a valores realistas**
   (standby ≤ 0,10 kW, LED 0,02–0,10 kW, climatización 1,10–1,50 kW,
   electrodomésticos 1,00–2,50 kW y FP entre 0,70 y 0,99).

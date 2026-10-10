@@ -1,6 +1,6 @@
 # `index.html` — Estructura de la interfaz
 
-Página única (341 líneas) que monta toda la UI. No contiene lógica: solo
+Página única (351 líneas) que monta toda la UI. No contiene lógica: solo
 estructura y llamadas `onclick`/`onchange` a funciones globales definidas en
 `js/app.js`.
 
@@ -47,9 +47,9 @@ Contenedor `.toolbar` (`position: sticky`) con los controles de la simulación:
 | Control | Atributos | Manejador |
 |---|---|---|
 | Botón play/pausa | `#btnPlay`, clase `btn-play` | `togglePlay()` |
-| Reiniciar día | clase `btn-reset` | `resetAll()` |
+| Reiniciar día | clase `btn-reset` | `solicitarReset()`; abre el modal de confirmación (sección 8). |
 | Velocidad 1 / 5 / 15 / 60 | 4 × `.btn-speed` (el primero `active`) | `setSpeed(n, this)` |
-| **🎲 Auto** | `#btnAuto`, clase `btn-auto` | `toggleAutoSim()`; la clase `active` y `aria-pressed` marcan el modo automático. |
+| **🎲 Auto (pruebas)** | `#btnAuto`, clase `btn-auto` | `toggleAutoSim()`; modo de pruebas (solo para el profesor), no usar en la práctica; la clase `active` y `aria-pressed` marcan el modo automático. |
 | Slider de hora | `#hourSlider` (`min=0 max=23 step=1`) | `jumpToHour(this.value)` (`oninput`) |
 | **Reloj** | `.clock-display` `#clock` | Reloj simulado `HH:MM`, 2 rem y alto contraste (lo escribe `updateUI()`). |
 
@@ -76,7 +76,7 @@ Los tres usan `onclick="setTab('id', this)"` y llevan `aria-selected` /
 
 ---
 
-## 5. `<main>` — Panel «Plano de la casa» (líneas 41–336)
+## 5. `<main>` — Panel «Plano de la casa» (líneas 41–335)
 
 `<section id="panel-plano" class="tab-panel active" role="tabpanel">`
 contiene una `.plan-layout` con plano a la izquierda y sidebar a la derecha.
@@ -96,6 +96,13 @@ Los `<button>` de cada equipo, los recuadros de zona y las etiquetas se crean
 **por JavaScript** dentro de `#floorPlan`.
 
 ### 5.2 Sidebar
+
+**Tarjeta «Aparatos activos ahora»** (`.active-card`) — va **encima** del
+inspector y se muestra con tipografía grande (`.active-list` a ~0,95 rem y
+hasta 360 px de alto).
+
+- `#activeList` (`.active-list`) — lo rellena `updateActiveList()`; arranca con
+  el texto "Ninguno activo".
 
 **Tarjeta «Activo seleccionado»** (`.inspector-card`)
 
@@ -117,17 +124,11 @@ Los `<button>` de cada equipo, los recuadros de zona y las etiquetas se crean
 | `inspectorDuration` | `input[type=number]` (1–1440) | `onchange="cambiarDuracionAparato()"`. |
 | `inspectorUnit` | `<select>` (`1` min / `60` h) | `onchange="cambiarDuracionAparato()"`. |
 | Botones de zona | `.btn-zone` | `encenderZonaDesdeInspector()` y `apagarZonaDesdeInspector()`. |
-| `inspectorDuplicate` | button | `duplicarAparatoSeleccionado()`; se deshabilita si no es `duplicable`. |
-| `inspectorDelete` | button `.btn-danger` | `eliminarAparatoSeleccionado()`; se deshabilita en las originales. |
-
-**Tarjeta «Aparatos activos ahora»**
-
-- `#activeList` (`.active-list`) — lo rellena `updateActiveList()`; arranca con
-  el texto "Ninguno activo".
+| `inspectorDelete` | button `.btn-danger` | `eliminarAparatoSeleccionado()`; se deshabilita en las originales. Ya no hay botón de duplicar. |
 
 ---
 
-## 6. Panel «Consumo» (líneas 126–254)
+## 6. Panel «Consumo» (líneas 125–253)
 
 `<section id="panel-consumo" class="tab-panel" hidden>` con `.grid-metrics`:
 
@@ -194,10 +195,13 @@ Los `<button>` de cada equipo, los recuadros de zona y las etiquetas se crean
 
 ---
 
-## 7. Panel «Gráficas» (líneas 256–335)
+## 7. Panel «Gráficas» (líneas 255–334)
 
 `<section id="panel-graficas" class="tab-panel" hidden>` con `.grid-charts`.
-Cada tarjeta = `<canvas>` + leyenda de colores + `.stat-mini` con métricas.
+Cada tarjeta = `<canvas>` + leyenda de colores + `.stat-mini` con métricas. Las 4
+gráficas horarias (no la de zonas) incluyen además un `div.chart-tip`
+(`#<canvas>-tip`, oculto con `hidden`) que muestra hora, estado y valores al
+pasar el ratón (crosshair; ver `js-app.md`, sección 12).
 
 | Tarjeta | Canvas | Lógica de dibujo | IDs de métricas |
 |---|---|---|---|
@@ -212,7 +216,23 @@ Cada tarjeta = `<canvas>` + leyenda de colores + `.stat-mini` con métricas.
 
 ---
 
-## 8. Scripts (líneas 338–339)
+## 8. Modal de reinicio (líneas 337–346)
+
+Popup propio para confirmar «Reiniciar día» (no usa `confirm()` nativo):
+
+| Elemento | ID / clase | Papel |
+|---|---|---|
+| Fondo | `#resetModal` (`.modal-overlay`) | Cubre la pantalla; arranca con `hidden`; un clic en el fondo lo cierra. |
+| Caja | `.modal-box` (`role="alertdialog"`) | Título, texto y acciones. |
+| Título | `#resetModalTitle` | "¿Reiniciar el día?". |
+| Texto | `#resetModalText` | Advertencia: si continúas se pierde todo el progreso del día (reloj, contadores, energías, tramos y ciclos); no se puede deshacer. |
+| Botones | `#resetCancel` / `#resetConfirm` | "Seguir como está" → `cancelarReset()`; "Sí, reiniciar" → `confirmarReset()`. |
+
+Se abre con `solicitarReset()` y también se cierra con **Escape**.
+
+---
+
+## 9. Scripts (líneas 348–349)
 
 ```html
 <script src="js/zonas.js"></script>
@@ -225,7 +245,7 @@ todas las llamadas a `document.getElementById(...)` funcionan.
 
 ---
 
-## 9. Mapa inverso: ¿quién escribe cada ID?
+## 10. Mapa inverso: ¿quién escribe cada ID?
 
 | ID | Escrito por |
 |---|---|
@@ -241,13 +261,15 @@ todas las llamadas a `document.getElementById(...)` funcionan.
 | `btnPlay` | `togglePlay()`, `resetAll()`, `loop()` |
 | `btnAuto` (clase `active` y `aria-pressed`) | `toggleAutoSim()` |
 | `chartElec`, `chartGeneration`, `chartWater`, `chartThermal`, `chartZonas` | `drawCharts()` / `drawChartGeneration()` / `drawBarChart()` / `drawChartZonas()` |
+| `chartElec-tip`, `chartGeneration-tip`, `chartWater-tip`, `chartThermal-tip` | `actualizarTooltip()` / `initChartCrosshair()` (crosshair con hora y valores) |
 
-## 10. Mapa de manejadores inline
+## 11. Mapa de manejadores inline
 
 | Atributo | Función de `app.js` |
 |---|---|
 | `onclick="togglePlay()"` | `togglePlay()` |
-| `onclick="resetAll()"` | `resetAll()` |
+| `onclick="solicitarReset()"` | `solicitarReset()` |
+| `onclick="cancelarReset()"` / `confirmarReset()` | cierra el modal / cierra y llama a `resetAll()` |
 | `onclick="setSpeed(n, this)"` | `setSpeed()` |
 | `onclick="toggleAutoSim()"` | `toggleAutoSim()` |
 | `oninput="jumpToHour(this.value)"` | `jumpToHour()` |
@@ -257,6 +279,6 @@ todas las llamadas a `document.getElementById(...)` funcionan.
 | `onchange="cambiarZonaAparato()"` | `cambiarZonaAparato()` |
 | `onchange="cambiarDuracionAparato()"` | `cambiarDuracionAparato()` |
 | `onclick="encenderZonaDesdeInspector()"` / `apagarZonaDesdeInspector()` | ídem |
-| `onclick="duplicarAparatoSeleccionado()"` / `eliminarAparatoSeleccionado()` | ídem |
+| `onclick="eliminarAparatoSeleccionado()"` | `eliminarAparatoSeleccionado()` (ya no hay duplicar) |
 | `onclick="exportarCSV()"` / `exportarExcelMultiHoja()` / `exportarExcelConGraficos()` | ídem |
 | `onclick` de los badges y pestañas de planta | creados dinámicamente en `renderPlano()` / `renderPlantaTabs()` |

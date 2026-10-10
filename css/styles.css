@@ -242,25 +242,26 @@ header .sub { font-size: 0.8rem; color: #94a3b8; }
 
 /* ---------- Lista de activos ---------- */
 .active-list {
-  margin-top: 10px;
-  padding: 10px;
+  margin-top: 12px;
+  padding: 12px;
   background: #0f172a;
   border-radius: 10px;
-  font-size: 0.78rem;
+  font-size: 0.95rem;
   color: #94a3b8;
-  max-height: 120px;
+  max-height: 320px;
   overflow-y: auto;
 }
 .active-list .item {
   display: flex;
   justify-content: space-between;
-  padding: 3px 0;
+  padding: 7px 4px;
   border-bottom: 1px dashed #1e293b;
 }
 .active-list .item:last-child { border-bottom: none; }
 .active-list .item .t {
   color: #fbbf24;
   font-weight: 600;
+  font-size: 0.9rem;
 }
 
 /* ---------- Métricas ---------- */
@@ -373,6 +374,42 @@ header .sub { font-size: 0.8rem; color: #94a3b8; }
 canvas {
   width: 100% !important;
   height: 100% !important;
+}
+
+.chart-tip {
+  position: absolute;
+  z-index: 6;
+  padding: 6px 9px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  font: 11px/1.45 sans-serif;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+.chart-tip .tip-h {
+  color: #38bdf8;
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+.chart-tip .tip-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.chart-tip .tip-k {
+  color: #94a3b8;
+}
+.chart-tip .tip-v {
+  margin-left: auto;
+  color: #f1f5f9;
+  font-weight: 600;
+}
+.chart-tip .tip-estado {
+  color: #94a3b8;
+  font-style: italic;
 }
 
 .legend {
@@ -1032,6 +1069,11 @@ main {
   padding: 17px;
 }
 
+.sidebar .active-card h2 {
+  font-size: 1.15rem;
+  color: #f8fafc;
+}
+
 .empty-inspector {
   display: grid;
   place-items: center;
@@ -1163,10 +1205,16 @@ main {
   gap: 7px;
 }
 
-.zone-actions,
-.inspector-actions {
+.zone-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.inspector-actions {
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 8px;
   margin-top: 14px;
 }
@@ -1176,20 +1224,19 @@ main {
   height: 36px;
 }
 
-.inspector-actions #inspectorDuplicate:disabled,
 .inspector-actions #inspectorDelete:disabled {
   opacity: 0.38;
   cursor: not-allowed;
 }
 
 .active-list {
-  max-height: 245px;
+  max-height: 360px;
 }
 
 .active-list .item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
 }
 
@@ -1197,9 +1244,10 @@ main {
   overflow: hidden;
   border: 0;
   background: transparent;
-  color: #cbd5e1;
+  color: #e2e8f0;
   cursor: pointer;
-  font-size: 0.74rem;
+  font-size: 0.95rem;
+  padding: 4px 0;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1387,4 +1435,55 @@ main {
   .grid-metrics {
     grid-template-columns: 1fr;
   }
+}
+
+/* ---------- Modal de confirmación ---------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.modal-overlay[hidden] {
+  display: none;
+}
+
+.modal-box {
+  width: min(430px, 100%);
+  padding: 22px;
+  border: 1px solid #334155;
+  border-radius: 14px;
+  background: #0f172a;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.modal-box h3 {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+  color: #f8fafc;
+}
+
+.modal-box p {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.modal-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.modal-actions button {
+  height: 42px;
+  border-radius: 10px;
+  font-size: 0.9rem;
 }

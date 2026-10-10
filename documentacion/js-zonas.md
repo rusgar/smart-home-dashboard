@@ -101,7 +101,7 @@ Es la fuente de verdad de la que `app.js` crea instancias.
 | `fp` | number | Factor de potencia (0,70–0,99): bajo en motores (frigorífico, ventilador) y microondas. |
 | `termica` | number | Aporte/refrigeración térmica en **kW** (negativo en aire acondicionado y frigorífico). En equipos `acs` se ignora: la térmica se deriva del agua. |
 | `zona` | string | ID de zona por defecto. |
-| `duplicable` | boolean | Si `true` se pueden crear copias desde el inspector. **Los 22 equipos de consumo son duplicables**; solo `placas_solares` y `generador_diesel` no lo son. |
+| `duplicable` | boolean | Si `true` se puede crear una copia con `duplicarAparato()` (ya no hay botón en el inspector). **Los 22 equipos de consumo son duplicables**; solo `placas_solares` y `generador_diesel` no lo son. |
 | `posX`, `posY` | number | Posición por defecto en % del plano. |
 | `categoria` | string | Clave de `CATEGORIAS`. |
 
@@ -188,4 +188,4 @@ secadora) no consume agua.
 | `PLANTAS` | `renderPlantaTabs()`, `cambiarPlanta()`, `renderInspector()` (optgroup), `renderPlano()`. |
 | `ZONAS` | `renderPlano()`, `zonaDesdePosicion()`, `ajustarPosicionAparatoEnZona()`, `getConsumoPorZona()`, exportaciones. |
 | `CATEGORIAS` | `claveCategoriaAparato()`. |
-| `CATALOGO` | `crearInstanciaAparato()` al arrancar y en `cargarDistribucion()` / `duplicarAparato()`. |
+| `CATALOGO` | `crearInstanciaAparato()` al arrancar y en `duplicarAparato()`. |

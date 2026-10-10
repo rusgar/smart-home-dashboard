@@ -91,6 +91,7 @@ const state = {
   speed: 1,
   autoSim: false,
   tabActiva: 'plano',
+  chartHoverHour: null,
   plantaActiva: 'baja',
   aparatoSeleccionado: null,
   arrastre: null,
@@ -129,8 +130,6 @@ const state = {
   generacionDieselActual: 0,
   importacionActual: 0
 };
-
-cargarDistribucion();
 
 // ================================================================
 // PERFILES BASE
@@ -178,69 +177,6 @@ function limitar(valor, minimo, maximo) {
   return Math.min(maximo, Math.max(minimo, valor));
 }
 
-function guardarDistribucion() {
-  try {
-    const dispositivos = Object.values(aparatos).map(ap => ({
-      idCatalogo: ap.idCatalogo,
-      idInstancia: ap.idInstancia,
-      numero: ap.numero,
-      zona: ap.zona,
-      posX: ap.posX,
-      posY: ap.posY,
-      duracionMinutos: ap.duracionMinutos
-    }));
-    localStorage.setItem(CLAVE_DISTRIBUCION, JSON.stringify({ version: 1, dispositivos }));
-  } catch (error) {
-    return false;
-  }
-  return true;
-}
-
-function cargarDistribucion() {
-  try {
-    const contenido = localStorage.getItem(CLAVE_DISTRIBUCION);
-    if (!contenido) return;
-    const guardada = JSON.parse(contenido);
-    if (guardada.version !== 1 || !Array.isArray(guardada.dispositivos)) return;
-
-    const restaurados = {};
-    CATALOGO.forEach(item => {
-      restaurados[item.id] = crearInstanciaAparato(item, item.id, 1);
-    });
-
-    guardada.dispositivos.forEach(dispositivo => {
-      const item = CATALOGO.find(c => c.id === dispositivo.idCatalogo);
-      if (!item || !ZONAS[dispositivo.zona]) return;
-      const numero = Number(dispositivo.numero) || 1;
-
-      if (numero === 1) {
-        if (dispositivo.idInstancia !== item.id || !restaurados[item.id]) return;
-        restaurados[item.id].zona = dispositivo.zona;
-        restaurados[item.id].posX = limitar(Number(dispositivo.posX) || item.posX, 2, 98);
-        restaurados[item.id].posY = limitar(Number(dispositivo.posY) || item.posY, 3, 97);
-        ajustarPosicionAparatoEnZona(restaurados[item.id]);
-        restaurados[item.id].duracionMinutos = limitar(Number(dispositivo.duracionMinutos) || 1, 1, 1440);
-        return;
-      }
-
-      if (!item.duplicable || restaurados[dispositivo.idInstancia]) return;
-      const instancia = crearInstanciaAparato(item, dispositivo.idInstancia, numero);
-      instancia.zona = dispositivo.zona;
-      instancia.posX = limitar(Number(dispositivo.posX) || item.posX, 2, 98);
-      instancia.posY = limitar(Number(dispositivo.posY) || item.posY, 3, 97);
-      ajustarPosicionAparatoEnZona(instancia);
-      instancia.duracionMinutos = limitar(Number(dispositivo.duracionMinutos) || 1, 1, 1440);
-      restaurados[instancia.idInstancia] = instancia;
-      contadorDuplicados[item.id] = Math.max(contadorDuplicados[item.id] || 1, instancia.numero);
-    });
-
-    Object.keys(aparatos).forEach(id => delete aparatos[id]);
-    Object.assign(aparatos, restaurados);
-  } catch (error) {
-    return;
-  }
-}
-
 function reiniciarInstanciasAparatos() {
   Object.keys(aparatos).forEach(id => delete aparatos[id]);
   Object.keys(contadorDuplicados).forEach(id => delete contadorDuplicados[id]);
@@ -255,7 +191,6 @@ function restablecerPlano() {
   state.aparatoSeleccionado = null;
   state.plantaActiva = 'baja';
   state.playing = false;
-  localStorage.removeItem(CLAVE_DISTRIBUCION);
   renderAparatos();
   updateUI();
   const btn = document.getElementById('btnPlay');
@@ -473,7 +408,6 @@ function iniciarArrastreAparato(event) {
       ap.zona = zonaDestino.id;
       ap.posX = arrastre.posX;
       ap.posY = arrastre.posY;
-      guardarDistribucion();
     }
     renderPlano();
     renderInspector();
@@ -529,9 +463,7 @@ function renderInspector() {
   document.getElementById('inspectorDuration').value = ap.duracionMinutos / unidad;
   document.getElementById('inspectorUnit').value = String(unidad);
 
-  const duplicar = document.getElementById('inspectorDuplicate');
   const eliminar = document.getElementById('inspectorDelete');
-  duplicar.disabled = !ap.duplicable;
   eliminar.disabled = ap.numero === 1;
 }
 
@@ -610,7 +542,6 @@ function cambiarDuracionAparato() {
   const unidad = Number(document.getElementById('inspectorUnit').value) || 1;
   ap.duracionMinutos = limitar(Math.round(valor * unidad), 1, 1440);
   if (ap.on && !ap.siempreOn) activarAparato(ap);
-  guardarDistribucion();
   renderInspector();
   updateUI();
 }
@@ -621,7 +552,6 @@ function cambiarZonaAparato() {
   const idZona = document.getElementById('inspectorZone').value;
   posicionarAparatoEnZona(ap, idZona);
   state.plantaActiva = ZONAS[idZona].planta;
-  guardarDistribucion();
   renderAparatos();
   updateUI();
 }
@@ -648,13 +578,8 @@ function duplicarAparato(idInstancia) {
   posicionarAparatoEnZona(nuevaInstancia, original.zona);
   aparatos[nuevoId] = nuevaInstancia;
   state.aparatoSeleccionado = nuevoId;
-  guardarDistribucion();
   renderAparatos();
   updateUI();
-}
-
-function duplicarAparatoSeleccionado() {
-  if (state.aparatoSeleccionado) duplicarAparato(state.aparatoSeleccionado);
 }
 
 function eliminarAparato(idInstancia) {
@@ -670,7 +595,6 @@ function eliminarAparato(idInstancia) {
   }
   delete aparatos[idInstancia];
   state.aparatoSeleccionado = Object.values(aparatos).find(otro => otro.zona === ap.zona)?.idInstancia || null;
-  guardarDistribucion();
   renderAparatos();
   updateUI();
 }
@@ -835,8 +759,8 @@ function toggleAutoSim() {
   btn.classList.toggle('active', state.autoSim);
   btn.setAttribute('aria-pressed', String(state.autoSim));
   btn.title = state.autoSim
-    ? 'Simulación automática ACTIVA: los equipos se encienden y apagan solos con horarios realistas'
-    : 'Enciende y apaga equipos solos con horarios realistas';
+    ? 'MODO DE PRUEBAS ACTIVO: los equipos se encienden y apagan solos y el diésel se gestiona solo. No usar durante la práctica.'
+    : 'Modo de pruebas: enciende y apaga equipos solo y gestiona el diésel. No usar durante la práctica.';
 }
 
 function simularAutomatica() {
@@ -1123,7 +1047,7 @@ function updateUI() {
     document.getElementById('inspectorEnergy').textContent = `${(seleccionado.fuente === 'solar' ? state.solarHoy : seleccionado.fuente === 'diesel' ? state.dieselHoy : seleccionado.energiaAcum).toFixed(3)} kWh`;
     document.getElementById('inspectorWater').textContent = seleccionado.fuente === 'diesel' ? `${state.dieselLitrosHoy.toFixed(2)} L` : seleccionado.fuente === 'solar' ? 'Solar' : `${seleccionado.aguaAcum.toFixed(1)} L`;
   }
-  if (state.tabActiva === 'graficas') drawCharts();
+  if (state.tabActiva === 'graficas') { drawCharts(); actualizarTooltip(); }
 }
 
 function updateDayBar() {
@@ -1266,6 +1190,11 @@ function setupCanvas(canvas) {
   return { ctx, w: rect.width, h: rect.height };
 }
 
+function chartGeom(w, h, padL = 40, padB = 25) {
+  const padR = 15, padT = 15;
+  return { padL, padR, padT, padB, cw: w - padL - padR, ch: h - padT - padB };
+}
+
 function drawCharts() {
   const canvas = document.getElementById('chartElec');
   const config = setupCanvas(canvas);
@@ -1273,9 +1202,8 @@ function drawCharts() {
   const { ctx, w, h } = config;
   ctx.clearRect(0, 0, w, h);
 
-  const padL = 40, padR = 15, padT = 15, padB = 25;
-  const cw = w - padL - padR;
-  const ch = h - padT - padB;
+  const geo = chartGeom(w, h);
+  const { padL, padT, cw, ch } = geo;
 
   let maxVal = 0.5;
   for (let i = 0; i < 24; i++) {
@@ -1363,6 +1291,7 @@ function drawCharts() {
   drawBarChart('chartThermal', state.baseTerm, state.apPotenciaTerm, '#f87171', '#fca5a5', null, null, state.potenciaTermicaActual);
   drawChartGeneration();
   drawChartZonas();
+  dibujarCrosshair('chartElec');
 }
 
 function drawChartGeneration() {
@@ -1371,9 +1300,8 @@ function drawChartGeneration() {
   const { ctx, w, h } = config;
   ctx.clearRect(0, 0, w, h);
 
-  const padL = 40, padR = 15, padT = 15, padB = 25;
-  const cw = w - padL - padR;
-  const ch = h - padT - padB;
+  const geo = chartGeom(w, h);
+  const { padL, padT, cw, ch } = geo;
   const datosHorario = Array.from({ length: 24 }, (_, i) => obtenerDatosHora(i));
   const solarData = datosHorario.map(datos => datos.solar);
   const dieselData = datosHorario.map(datos => datos.diesel);
@@ -1396,7 +1324,7 @@ function drawChartGeneration() {
   }
   ctx.textAlign = 'center';
   for (let i = 0; i <= 24; i += 4) {
-    ctx.fillText(i + 'h', padL + (cw / 24) * i, h - 8);
+    ctx.fillText(i + 'h', geo.padL + (geo.cw / 24) * i, h - 8);
   }
 
   const dibujarLinea = (datos, color, guiones) => {
@@ -1417,14 +1345,15 @@ function drawChartGeneration() {
   dibujarLinea(solarData, '#facc15', false);
   dibujarLinea(dieselData, '#fb923c', true);
 
-  const xNow = padL + (cw / 24) * (state.hour + state.minute / 60);
+  const xNow = geo.padL + (geo.cw / 24) * (state.hour + state.minute / 60);
   ctx.strokeStyle = '#38bdf8';
   ctx.setLineDash([4, 3]);
   ctx.beginPath();
-  ctx.moveTo(xNow, padT);
-  ctx.lineTo(xNow, padT + ch);
+  ctx.moveTo(xNow, geo.padT);
+  ctx.lineTo(xNow, geo.padT + geo.ch);
   ctx.stroke();
   ctx.setLineDash([]);
+  dibujarCrosshair('chartGeneration');
 }
 
 function drawChartZonas() {
@@ -1501,9 +1430,8 @@ function drawBarChart(canvasId, baseData, apData, colorBase, colorAp, colorAlert
   const { ctx, w, h } = config;
   ctx.clearRect(0, 0, w, h);
 
-  const padL = 40, padR = 15, padT = 15, padB = 25;
-  const cw = w - padL - padR;
-  const ch = h - padT - padB;
+  const geo = chartGeom(w, h, 40, 25);
+  const { padL, padT, cw, ch } = geo;
 
   let maxVal = 1;
   for (let i = 0; i < 24; i++) {
@@ -1561,14 +1489,144 @@ function drawBarChart(canvasId, baseData, apData, colorBase, colorAp, colorAlert
     }
   }
 
-  const xNow = padL + (cw / 24) * (state.hour + state.minute / 60);
+  const xNow = geo.padL + (geo.cw / 24) * (state.hour + state.minute / 60);
   ctx.strokeStyle = '#38bdf8';
   ctx.setLineDash([4, 3]);
   ctx.beginPath();
-  ctx.moveTo(xNow, padT);
-  ctx.lineTo(xNow, padT + ch);
+  ctx.moveTo(xNow, geo.padT);
+  ctx.lineTo(xNow, geo.padT + geo.ch);
   ctx.stroke();
   ctx.setLineDash([]);
+  dibujarCrosshair(canvasId);
+}
+
+const CHART_CONFIGS = {
+  chartElec: {
+    geom: (w, h) => chartGeom(w, h),
+    max: (w, h) => {
+      let m = 0.5;
+      for (let i = 0; i < 24; i++) m = Math.max(m, obtenerDatosHora(i).demanda);
+      return Math.ceil(m * 2) / 2;
+    },
+    datos: (h) => {
+      const d = obtenerDatosHora(h);
+      return { estado: d.estado, filas: [['Demanda', d.demanda, '#fbbf24'], ['Importación', d.importacion, '#38bdf8'], ['FP', d.fp, '#22c55e', 2]] };
+    }
+  },
+  chartGeneration: {
+    geom: (w, h) => chartGeom(w, h),
+    max: (w, h) => {
+      let m = 1;
+      for (let i = 0; i < 24; i++) { const d = obtenerDatosHora(i); m = Math.max(m, d.solar, d.diesel); }
+      return Math.ceil(m * 2) / 2;
+    },
+    datos: (h) => {
+      const d = obtenerDatosHora(h);
+      return { estado: d.estado, filas: [['Solar', d.solar, '#facc15'], ['Diésel', d.diesel, '#fb923c'], ['Gasoleo', d.gasoleo, '#fb923c', 3, ' L']] };
+    }
+  },
+  chartWater: {
+    geom: (w, h) => chartGeom(w, h),
+    max: (w, h) => {
+      let m = 1;
+      for (let i = 0; i < 24; i++) m = Math.max(m, state.baseAgua[i] + state.apPotenciaAgua[i]);
+      return Math.ceil(m * 1.2);
+    },
+    datos: (h) => {
+      const base = state.baseAgua[h];
+      const ap = h === state.hour ? (state.minutosSimulados[h] > 0 ? state.apPotenciaAgua[h] : state.potenciaAguaActual) : state.apPotenciaAgua[h];
+      return { estado: h === state.hour ? 'Actual' : h > state.hour ? 'Proyectado' : 'Simulado', filas: [['Base', base, '#38bdf8'], ['Aparatos', ap, '#0ea5e9'], ['Total', base + ap, '#e2e8f0', 1, ' L/h']] };
+    }
+  },
+  chartThermal: {
+    geom: (w, h) => chartGeom(w, h),
+    max: (w, h) => {
+      let m = 1;
+      for (let i = 0; i < 24; i++) m = Math.max(m, state.baseTerm[i] + state.apPotenciaTerm[i]);
+      return Math.ceil(m * 1.2);
+    },
+    datos: (h) => {
+      const base = state.baseTerm[h];
+      const ap = h === state.hour ? (state.minutosSimulados[h] > 0 ? state.apPotenciaTerm[h] : state.potenciaTermicaActual) : state.apPotenciaTerm[h];
+      return { estado: h === state.hour ? 'Actual' : h > state.hour ? 'Proyectado' : 'Simulado', filas: [['Base', base, '#fca5a5'], ['Aparatos', ap, '#f87171'], ['Total', base + ap, '#e2e8f0', 1, ' kW'], ['Gas eq.', (base + ap) / 10.5, '#94a3b8', 3, ' m³']] };
+    }
+  }
+};
+
+function chartHoverGeom(chartId) {
+  const info = CHART_CONFIGS[chartId];
+  const canvas = document.getElementById(chartId);
+  if (!info || !canvas || canvas.getBoundingClientRect().width <= 0) return null;
+  const rect = canvas.getBoundingClientRect();
+  const geo = info.geom(rect.width, rect.height);
+  return { info, canvas, rect, geo, maxVal: info.max(rect.width, rect.height) };
+}
+
+function dibujarCrosshair(chartId) {
+  if (state.chartHoverHour === null) return;
+  const ctx = chartHoverGeom(chartId);
+  if (!ctx) return;
+  const { canvas, geo, maxVal } = ctx;
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const g = canvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const x = geo.padL + (geo.cw / 24) * (state.chartHoverHour + 0.5);
+  const v = CHART_CONFIGS[chartId].datos(state.chartHoverHour).filas.reduce((a, f) => a + (typeof f[1] === 'number' && f[2] !== '#22c55e' ? f[1] : 0), 0);
+  const y = geo.padT + geo.ch - (Math.min(v, maxVal) / maxVal) * geo.ch;
+  g.strokeStyle = 'rgba(148, 163, 184, 0.5)';
+  g.lineWidth = 1;
+  g.setLineDash([4, 4]);
+  g.beginPath();
+  g.moveTo(x, geo.padT);
+  g.lineTo(x, geo.padT + geo.ch);
+  g.moveTo(geo.padL, y);
+  g.lineTo(geo.padL + geo.cw, y);
+  g.stroke();
+  g.setLineDash([]);
+  g.fillStyle = 'rgba(148, 163, 184, 0.9)';
+  g.beginPath();
+  g.arc(x, y, 3, 0, Math.PI * 2);
+  g.fill();
+}
+
+function actualizarTooltip() {
+  for (const chartId of Object.keys(CHART_CONFIGS)) {
+    const tip = document.getElementById(chartId + '-tip');
+    const ctx = chartHoverGeom(chartId);
+    if (!tip) continue;
+    if (state.chartHoverHour === null || !ctx || state.tabActiva !== 'graficas') { tip.hidden = true; continue; }
+    const { info, rect, geo, maxVal } = ctx;
+    const h = state.chartHoverHour;
+    const { estado, filas } = info.datos(h);
+    let html = `<div class="tip-h">${String(h).padStart(2, '0')}:00 · ${estado}</div>`;
+    filas.forEach(([k, v, color, dec, suf]) => {
+      html += `<div class="tip-row"><span class="color-box" style="background:${color}"></span><span class="tip-k">${k}</span><span class="tip-v">${Number(v).toFixed(dec === undefined ? 2 : dec)}${suf || ''}</span></div>`;
+    });
+    tip.innerHTML = html;
+    tip.hidden = false;
+    const x = geo.padL + (geo.cw / 24) * (h + 0.5);
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    tip.style.left = Math.max(2, Math.min(rect.width - tw - 2, x + 10)) + 'px';
+    tip.style.top = Math.max(2, Math.min(rect.height - th - 2, geo.padT + 6)) + 'px';
+  }
+}
+
+function initChartCrosshair() {
+  Object.keys(CHART_CONFIGS).forEach((chartId) => {
+    const canvas = document.getElementById(chartId);
+    if (!canvas) return;
+    canvas.addEventListener('mousemove', (event) => {
+      const ctx = chartHoverGeom(chartId);
+      if (!ctx) return;
+      const { rect, geo } = ctx;
+      const x = event.clientX - rect.left;
+      if (x < geo.padL || x > geo.padL + geo.cw) { state.chartHoverHour = null; drawCharts(); actualizarTooltip(); return; }
+      const hour = Math.max(0, Math.min(23, Math.floor((x - geo.padL) / (geo.cw / 24))));
+      if (hour !== state.chartHoverHour) { state.chartHoverHour = hour; drawCharts(); actualizarTooltip(); }
+    });
+    canvas.addEventListener('mouseleave', () => { state.chartHoverHour = null; drawCharts(); actualizarTooltip(); });
+  });
 }
 
 // ================================================================
@@ -1618,6 +1676,20 @@ function loop(now) {
 // ================================================================
 // RESET
 // ================================================================
+function solicitarReset() {
+  document.getElementById('resetModal').hidden = false;
+  document.getElementById('resetCancel').focus();
+}
+
+function cancelarReset() {
+  document.getElementById('resetModal').hidden = true;
+}
+
+function confirmarReset() {
+  document.getElementById('resetModal').hidden = true;
+  resetAll();
+}
+
 function resetAll() {
   state.hour = 0;
   state.minute = 0;
@@ -2195,8 +2267,16 @@ async function exportarExcelConGraficos() {
 // INICIALIZACIÓN
 // ================================================================
 window.addEventListener('resize', () => {
-  if (state.tabActiva === 'graficas') drawCharts();
+  if (state.tabActiva === 'graficas') { drawCharts(); actualizarTooltip(); }
 });
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !document.getElementById('resetModal').hidden) cancelarReset();
+});
+
+initChartCrosshair();
+
+localStorage.removeItem(CLAVE_DISTRIBUCION);
 
 state.aparatoSeleccionado = CATALOGO[0].id;
 state.plantaActiva = ZONAS[aparatos[state.aparatoSeleccionado].zona].planta;

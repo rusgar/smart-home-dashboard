@@ -1,9 +1,9 @@
 # `js/app.js` — Lógica de la aplicación
 
-Fichero con toda la lógica: estado, instancias, persistencia, render del plano,
-bucle de simulación, gráficas y exportaciones.
+Fichero con toda la lógica: estado, instancias, render del plano, bucle de
+simulación, gráficas y exportaciones.
 
-- Líneas: 2066
+- Líneas: 2286
 - Depende de: `js/zonas.js` (`PLANTAS`, `ZONAS`, `CATEGORIAS`, `CATALOGO`)
 - Depende del DOM de `index.html` (IDs indicados en [`html-index.md`](html-index.md))
 
@@ -11,7 +11,7 @@ bucle de simulación, gráficas y exportaciones.
 
 1. [Globales y estado](#1-globales-y-estado)
 2. [Instancias y perfiles](#2-instancias-y-perfiles)
-3. [Persistencia de la distribución](#3-persistencia-de-la-distribución)
+3. [Sin persistencia](#3-sin-persistencia)
 4. [Posicionamiento en el plano](#4-posicionamiento-en-el-plano)
 5. [Render del plano y leyenda](#5-render-del-plano-y-leyenda)
 6. [Selección e inspector](#6-selección-e-inspector)
@@ -36,7 +36,7 @@ bucle de simulación, gráficas y exportaciones.
 |---|---|---|
 | `aparatos` | objeto | Mapa `idInstancia → instancia`. Es el "estado vivo" de todos los equipos. |
 | `contadorDuplicados` | objeto | Mapa `idCatalogo → último número de duplicado creado`. |
-| `CLAVE_DISTRIBUCION` | string | Clave de `localStorage`: `'smart-home-distribucion-v1'`. |
+| `CLAVE_DISTRIBUCION` | string | Clave heredada de `localStorage` (`'smart-home-distribucion-v1'`). La app **no guarda nada**: se usa solo para borrar lo que hubiera de versiones anteriores. |
 | `ACS_KWH_POR_LITRO` | number | `0,0465` kWh por litro de ACS calentado (40 °C); base de `potenciaTermicaEquipo()`. |
 
 Línea 10–12: `CATALOGO.forEach(...)` crea la instancia original de cada equipo.
@@ -48,7 +48,7 @@ Objeto único con el reloj, la UI y todos los acumuladores de 24 horas.
 | Grupo | Campos | Descripción |
 |---|---|---|
 | Reloj | `hour`, `minute`, `playing`, `speed` | Hora simulada, flag de reproducción y minutos por segundo reales. |
-| Auto | `autoSim` | `true` mientras está activo el botón **🎲 Auto** (simulación automática aleatoria). |
+| Auto | `autoSim` | `true` mientras está activo el botón **🎲 Auto (pruebas)** (modo de pruebas, no usar en la práctica). |
 | UI | `tabActiva`, `plantaActiva`, `aparatoSeleccionado`, `arrastre` | Pestaña abierta, planta visible, equipo seleccionado y datos del arrastre en curso. |
 | Perfiles | `baseElec`, `baseAgua`, `baseTerm` | Consumo base de la casa por hora (se rellenan con `generarPerfilesBase()`). |
 | Energía horaria | `apElec`, `apAgua`, `apTerm` | kWh/L acumulados por hora por los aparatos. |
@@ -103,7 +103,7 @@ Ayudantes de los tramos de uso:
   `acs: true` (calentamiento de ACS a 40 °C), si no `ap.termica`. La constante
   `ACS_KWH_POR_LITRO = 0,0465` está en la cabecera del fichero.
 
-### `generarPerfilesBase()` — línea 163
+### `generarPerfilesBase()` — línea 162
 
 Rellena `state.baseElec`, `baseAgua` y `baseTerm` para las 24 horas a partir de
 `PERFIL_ELEC_BASE` / `PERFIL_AGUA_BASE` / `PERFIL_TERM_BASE`, aplicando
@@ -113,72 +113,54 @@ variación aleatoria:
 - agua: perfil × 30 × (0,8–1,2) → **L/h**
 - térmico: perfil × 1,5 × (0,85–1,15)
 
-Se llama una sola vez al iniciar (línea 2203).
+Se llama una sola vez al iniciar (línea 2283).
 
-### `limitar(valor, minimo, maximo)` — línea 177
+### `limitar(valor, minimo, maximo)` — línea 176
 
 `clamp` genérico: `Math.min(max, Math.max(min, v))`. Se usa en posiciones,
-duraciones, hora del slider y en la carga de `localStorage`.
+duraciones y hora del slider.
 
 ---
 
-## 3. Persistencia de la distribución
+## 3. Sin persistencia
 
-### `guardarDistribucion()` — línea 181
+La app **no guarda nada en el navegador** (ni `localStorage` ni
+`sessionStorage`): cada visita arranca con el catálogo por defecto, las
+posiciones originales y los contadores a cero. Las funciones
+`guardarDistribucion()` y `cargarDistribucion()` **se han eliminado**.
 
-Serializa a `localStorage` solo los campos que el usuario puede cambiar:
+- Al arrancar se ejecuta `localStorage.removeItem(CLAVE_DISTRIBUCION)` para
+  borrar el historial que hubiera dejado versiones anteriores de la app.
+- Arrastrar, cambiar zona o duración ya no escriben en el navegador.
 
-```json
-{ "version": 1, "dispositivos": [ { idCatalogo, idInstancia, numero, zona, posX, posY, duracionMinutos } ] }
-```
-
-Devuelve `true`/`false` y nunca lanza (todo en `try/catch`). Se llama tras
-arrastrar, cambiar zona, duración, duplicar o eliminar.
-
-### `cargarDistribucion()` — línea 199
-
-Lee la clave y reconstruye `aparatos`:
-
-1. Comprueba `version === 1` y que `dispositivos` sea array.
-2. Crea de nuevo todas las instancias originales desde `CATALOGO`.
-3. Para cada guardado, localiza la plantilla y la zona; si la zona no existe, la descarta.
-   - `numero === 1`: aplica zona, posición (limitada a 2–98 / 3–97) y duración (1–1440) a la instancia original.
-   - `numero > 1`: solo se recrea si el catálogo es `duplicable` y la instancia no existe ya; incrementa `contadorDuplicados`.
-4. En ambos casos llama a `ajustarPosicionAparatoEnZona()` para meterla en su recuadro.
-5. Sustituye el contenido de `aparatos` por el restaurado.
-
-Tolerante a errores: cualquier excepción termina silenciosamente y se queda con
-el estado por defecto.
-
-### `reiniciarInstanciasAparatos()` — línea 244
+### `reiniciarInstanciasAparatos()` — línea 180
 
 Borra `aparatos` y `contadorDuplicados` y vuelve a crear la instancia original
-de cada elemento de `CATALOGO`. No toca `localStorage` (lo hace
-`restablecerPlano`).
+de cada elemento de `CATALOGO`.
 
-### `restablecerPlano()` — línea 252
+### `restablecerPlano()` — línea 188
 
-Botón "Restaurar plano". Pide confirmación, llama a
+Botón "Restaurar plano". Pide confirmación (nativa), llama a
 `reiniciarInstanciasAparatos()`, limpia la selección, vuelve a la planta baja,
-pausa la simulación, borra `localStorage`, repinta (`renderAparatos()` +
-`updateUI()`) y restablece el texto del botón de play a "▶ Iniciar día".
+pausa la simulación, repinta (`renderAparatos()` + `updateUI()`) y restablece
+el texto del botón de play a "▶ Iniciar día".
 
 ---
 
 ## 4. Posicionamiento en el plano
 
-### `nombreAparato(ap)` — línea 266
+### `nombreAparato(ap)` — línea 201
 
 Nombre visible: añade el número solo cuando `numero > 1`
 (`"Luces salón 2"`).
 
-### `zonaDesdePosicion(x, y, planta)` — línea 270
+### `zonaDesdePosicion(x, y, planta)` — línea 205
 
 Devuelve la zona cuyo rectángulo `plano` contiene el punto `(x, y)` **y** que
 pertenece a la planta indicada. Se usa al soltar un arrastre para reasignar la
 zona del equipo.
 
-### `ajustarPosicionAparatoEnZona(ap)` — línea 279
+### `ajustarPosicionAparatoEnZona(ap)` — línea 214
 
 Recorta `posX/posY` para que el badge quede dentro de su recuadro respetando un
 margen (los badges son de 40 px, 46 px en generación):
@@ -189,7 +171,7 @@ margen (los badges son de 40 px, 46 px en generación):
 Si la zona es más estrecha que los márgenes, centra el equipo en el rectángulo.
 Fundamental al cargar posiciones guardadas con zonas re-dimensionadas.
 
-### `posicionarAparatoEnZona(ap, idZona)` — línea 293
+### `posicionarAparatoEnZona(ap, idZona)` — línea 228
 
 Asigna zona y coloca el equipo en una de 6 casillas relativas
 (`[22,28] [50,28] [78,28] [22,68] [50,68] [78,68]`), eligiendo la siguiente
@@ -201,12 +183,12 @@ plano completo y limita a 2–98 / 3–97. Lo usan `duplicarAparato()` y
 
 ## 5. Render del plano y leyenda
 
-### `renderPlantaTabs()` — línea 307
+### `renderPlantaTabs()` — línea 242
 
 Reconstruye `#plantaTabs` con un botón por elemento de `PLANTAS`, marcando
 `active` la planta actual y usando `onclick="cambiarPlanta('id')"`.
 
-### `claveCategoriaAparato(ap)` — línea 316
+### `claveCategoriaAparato(ap)` — línea 251
 
 Devuelve `[clave, nombre, color]` de la categoría visual:
 
@@ -216,14 +198,14 @@ Devuelve `[clave, nombre, color]` de la categoría visual:
 
 La clave se usa para la clase CSS `cat-*`, la variable `--cat-color` y la leyenda.
 
-### `renderLeyendaPlano(planta)` — línea 323
+### `renderLeyendaPlano(planta)` — línea 258
 
 Rellena `#planLegend` con un chip por categoría presente en la planta, con el
 recuento de equipos. Orden predefinido:
 `luz, clima, vent, electro, agua, garaje, solar, diesel`. Si no existe el
 contenedor, sale sin más.
 
-### `renderPlano()` — línea 343
+### `renderPlano()` — línea 278
 
 Render principal del plano (se llama en cada cambio de planta, arrastre,
 duplicado, etc.):
@@ -243,24 +225,24 @@ duplicado, etc.):
 
 ## 6. Selección e inspector
 
-### `actualizarSeleccionVisual()` — línea 398
+### `actualizarSeleccionVisual()` — línea 333
 
 Sincroniza la clase `selected` de todos los `.plan-device` con
 `state.aparatoSeleccionado`. Evita repintar el plano entero al solo cambiar la
 selección.
 
-### `seleccionarAparato(idInstancia, cambiarPlanta = true)` — línea 404
+### `seleccionarAparato(idInstancia, cambiarPlanta = true)` — línea 339
 
 Marca el equipo como seleccionado. Si `cambiarPlanta` es `true`, salta a la
 planta de su zona (útil desde la lista de activos). Actualiza selección visual,
 inspector y pestañas de planta.
 
-### `cambiarPlanta(idPlanta)` — línea 414
+### `cambiarPlanta(idPlanta)` — línea 349
 
 Cambia de planta si el ID existe. Si el equipo seleccionado no pertenece a esa
 planta, selecciona el primero que sí (o `null`). Redibuja plano e inspector.
 
-### `iniciarArrastreAparato(event)` — línea 426
+### `iniciarArrastreAparato(event)` — línea 361
 
 Manejador `pointerdown` de los badges. Comportamiento:
 
@@ -271,11 +253,11 @@ Manejador `pointerdown` de los badges. Comportamiento:
 - `mover`: convierte `clientX/Y` a % respecto del rectángulo del plano,
   limita a 2–98 / 3–97 y actualiza el `left/top` del botón.
 - `finalizar(cancelado)`: si no se canceló y hay zona destino, reasigna
-  `ap.zona`, `ap.posX/posY` y guarda en `localStorage`; luego repinta plano,
-  inspector y UI. En caso contrario (solta fuera del plano o `pointercancel`)
-  mantiene la posición anterior.
+  `ap.zona` y `ap.posX/posY`; luego repinta plano, inspector y UI. En caso
+  contrario (solta fuera del plano o `pointercancel`) mantiene la posición
+  anterior.
 
-### `renderInspector()` — línea 488
+### `renderInspector()` — línea 422
 
 Pinta el panel "Activo seleccionado" (`#inspectorContent`) o muestra el vacío
 (`#emptyInspector`). Concretamente:
@@ -292,15 +274,17 @@ Pinta el panel "Activo seleccionado" (`#inspectorContent`) o muestra el vacío
 - Select de zona `#inspectorZone` reconstruido con `<optgroup>` por planta.
 - Control de duración (oculto para solar), con `unidad` min/h según
   `duracionMinutos`.
-- Habilita/deshabilita `Duplicar` (`duplicable`) y `Eliminar` (`numero !== 1`).
+- Habilita/deshabilita `Eliminar` (`numero !== 1`); ya no existe el botón de
+  duplicar.
 
-### `updateActiveList()` — línea 538
+### `updateActiveList()` — línea 470
 
 Rellena `#activeList` con los equipos encendidos: botón que los selecciona y
 estado a la derecha (`Solar ON` / `Siempre ON` / `N min`). Si no hay ninguno,
-escribe "Ninguno activo".
+escribe "Ninguno activo". La tarjeta «Aparatos activos ahora» va **encima** del
+inspector en la barra lateral y se muestra con tipografía grande.
 
-### `renderAparatos()` — línea 561
+### `renderAparatos()` — línea 493
 
 Atajo que llama en orden `renderPlano()` → `renderInspector()` →
 `updateActiveList()`. Se usa tras cualquier cambio estructural.
@@ -309,7 +293,7 @@ Atajo que llama en orden `renderPlano()` → `renderInspector()` →
 
 ## 7. Encendido, duración y zonas
 
-### `activarAparato(ap)` — línea 567
+### `activarAparato(ap)` — línea 499
 
 Enciende el equipo y carga su temporizador:
 
@@ -318,82 +302,82 @@ Enciende el equipo y carga su temporizador:
 - Resto: `minutosRestantes = duracionTotal = duracionMinutos` y
   `horaInicio = horaSimulada()`.
 
-### `desactivarAparato(ap)` — línea 582
+### `desactivarAparato(ap)` — línea 514
 
 Apaga, limpia `minutosRestantes`, `duracionTotal` y `horaInicio`, y cierra el
 tramo abierto con `cerrarPeriodo(ap)` (queda en `periodos` con su
 `hasta = horaSimulada()`). El apagado automático por fin de temporizador, dentro
 de `avanzarMinuto()`, hace lo mismo.
 
-### `toggleAparato(idInstancia)` — línea 590
+### `toggleAparato(idInstancia)` — línea 522
 
 Alterna el estado. Sale si no existe o si es `siempreOn`. Repinta y actualiza UI.
 
-### `toggleAparatoFromInspector()` — línea 602
+### `toggleAparatoFromInspector()` — línea 534
 
 Enlace `onclick` del interruptor del inspector: alterna el seleccionado.
 
-### `cambiarDuracionAparato()` — línea 606
+### `cambiarDuracionAparato()` — línea 538
 
 Lee `#inspectorDuration` + `#inspectorUnit` (min/h), calcula
-`duracionMinutos = valor × unidad` limitado a 1–1440, guardado en
-`localStorage`. Si el equipo está encendido y no es `siempreOn`, reinicia su
-temporizador con `activarAparato()`. No aplica al solar.
+`duracionMinutos = valor × unidad` limitado a 1–1440. Si el equipo está
+encendido y no es `siempreOn`, reinicia su temporizador con
+`activarAparato()`. No aplica al solar.
 
-### `cambiarZonaAparato()` — línea 618
+### `cambiarZonaAparato()` — línea 549
 
 Mueve el equipo seleccionado a la zona elegida en `#inspectorZone` usando
-`posicionarAparatoEnZona()`, cambia la planta visible, guarda, repinta y
-actualiza la UI.
+`posicionarAparatoEnZona()`, cambia la planta visible, repinta y actualiza la
+UI.
 
 ---
 
 ## 8. Duplicar / eliminar
 
-### `duplicarAparato(idInstancia)` — línea 632
+### `duplicarAparato(idInstancia)` — línea 562
 
 Crea una copia de un equipo `duplicable` (si no lo es, `alert`). **Son
 duplicables los 22 equipos de consumo**; solo `placas_solares` y
-`generador_diesel` quedan deshabilitados en el botón.
+`generador_diesel` no lo son.
 
 1. Incrementa `contadorDuplicados[idCatalogo]`.
 2. Nuevo ID `idCatalogo_n`, nueva instancia con `numero = n`.
 3. Hereda la duración del original y se coloca en una casilla libre de la zona.
-4. La selecciona, guarda en `localStorage`, repinta y actualiza UI.
+4. La selecciona, repinta y actualiza UI.
 
-### `duplicarAparatoSeleccionado()` — línea 656
+**El botón «Duplicar» del inspector se ha eliminado** (y con él
+`duplicarAparatoSeleccionado()`): la duplicación solo puede hacerse desde
+consola o desde el propio código.
 
-Enlace del botón "Duplicar" del inspector.
-
-### `eliminarAparato(idInstancia)` — línea 660
+### `eliminarAparato(idInstancia)` — línea 585
 
 Borra una instancia con estas reglas:
 
 - `numero === 1` (original) → `alert` y no hace nada.
 - Si está encendida → `alert` "Apaga el aparato antes de eliminarlo".
 - Si procede: `delete aparatos[id]`, reasigna la selección a otro equipo de la
-  misma zona (o `null`), guarda, repinta y actualiza UI.
+  misma zona (o `null`), repinta y actualiza UI.
 
-### `eliminarAparatoSeleccionado()` — línea 678
+### `eliminarAparatoSeleccionado()` — línea 602
 
 Enlace del botón "Eliminar" del inspector.
 
-### `apagarZona(idZona)` — línea 682
+### `apagarZona(idZona)` — línea 606
 
 Apaga todos los equipos de la zona excepto los `siempreOn`. Devuelve el número
 de equipos apagados. Repinta y actualiza UI.
 
-### `encenderZona(idZona)` — línea 695
+### `encenderZona(idZona)` — línea 619
 
 Enciende todos los equipos de la zona que estén apagados y no sean `siempreOn`
 (cada uno con su propia duración).
 
-### `encenderZonaDesdeInspector()` / `apagarZonaDesdeInspector()` — líneas 703 / 708
+### `encenderZonaDesdeInspector()` / `apagarZonaDesdeInspector()` — líneas 626 / 631
 
 Atajos que toman la zona del equipo seleccionado y llaman a las funciones
 anteriores.
 
-### `getConsumoPorZona()` — línea 713
+### `getConsumoPorZona()` — línea 637
 
 Devuelve `{ [idZona]: { elec, agua, term, generacion, solar, diesel, aparatosOn, aparatosTotal } }`.
 
@@ -409,14 +393,14 @@ Alimenta a `updateStats()` (tarjetas por zona) y a `drawChartZonas()`.
 
 ## 9. Controles generales
 
-### `setTab(idTab, boton)` — línea 751
+### `setTab(idTab, boton)` — línea 675
 
 Cambia de pestaña (`plano` | `consumo` | `graficas`): actualiza `state`,
 la clase `active` y `aria-selected` de los botones, oculta/muestra los
 `.tab-panel` y, si se abre la de gráficas, las redibuja en el siguiente frame
 (`requestAnimationFrame(drawCharts)`).
 
-### `togglePlay()` — línea 767
+### `togglePlay()` — línea 691
 
 Arranca/pausa la simulación. Si estaba al final del día (23:59) primero llama a
 `resetAll()`. Actualiza texto y clase del botón `#btnPlay`. Al **pausar** vacía
@@ -424,21 +408,22 @@ Arranca/pausa la simulación. Si estaba al final del día (23:59) primero llama 
 exactamente en el estado real (sin el desfase de hasta 250 ms de la
 actualización por frame).
 
-### `setSpeed(s, btn)` — línea 782
+### `setSpeed(s, btn)` — línea 706
 
 Fija `state.speed` (minutos simulados por segundo reales: 1, 5, 15, 60) y
 marca `active` en el botón correspondiente.
 
-### `jumpToHour(h)` — línea 788
+### `jumpToHour(h)` — línea 712
 
 Salta el reloj a una hora con el slider `#hourSlider`. Fija
 `state.minute` a los minutos ya simulados de esa hora (o 59 si la hora está
 completa) para no repetir cómputos, y refresca la UI.
 
-### Simulación automática aleatoria (🎲 Auto)
+### Simulación automática aleatoria (🎲 Auto (pruebas))
 
-Constantes y funciones del modo automático, que enciende y apaga equipos solos
-con horarios realistas **mientras la simulación está en marcha**:
+Modo de pruebas (etiquetado en la app como «🎲 Auto (pruebas)»), que enciende y
+apaga equipos solos con horarios realistas **mientras la simulación está en
+marcha**. No debe usarse durante la práctica:
 
 | Global | Descripción |
 |---|---|
@@ -463,7 +448,7 @@ pausar no se enciende nada nuevo ni arranca el diésel, porque
 
 ## 10. Simulación
 
-### `avanzarMinuto()` — línea 884 · **núcleo del simulador**
+### `avanzarMinuto()` — línea 808 · **núcleo del simulador**
 
 Ejecuta un minuto simulado de la hora actual. Devuelve `true` si algún equipo
 se apagó solo (para que el bucle repinte el plano).
@@ -510,7 +495,7 @@ Flujo:
 
 ## 11. UI y estadísticas
 
-### `updateUI()` — línea 991
+### `updateUI()` — línea 915
 
 Actualiza toda la interfaz cada 250 ms durante la reproducción (y tras cualquier
 acción). No escribe en los arrays horarios (eso lo hace `avanzarMinuto()`), solo
@@ -544,13 +529,13 @@ lee y pinta:
 - Refresca energía/recursos del inspector si hay selección.
 - Si la pestaña activa es `graficas`, llama a `drawCharts()`.
 
-### `updateDayBar()` — línea 1129
+### `updateDayBar()` — línea 1053
 
 Construye (si hace falta) y actualiza las 24 casillas de `#dayBar`. El color de
 cada hora depende de su importación de red, y el `title` muestra estado, demanda,
 solar y diésel. Marca `active` la hora actual.
 
-### `updateStats()` — línea 1148
+### `updateStats()` — línea 1072
 
 Rellena los micro-datos de las tarjetas de gráficas y las zonas:
 
@@ -573,14 +558,14 @@ Rellena los micro-datos de las tarjetas de gráficas y las zonas:
 
 ## 12. Gráficas en canvas
 
-### `setupCanvas(canvas)` — línea 1257
+### `setupCanvas(canvas)` — línea 1181
 
 Prepara un canvas para dibujar nítido en pantallas HiDPI: multiplica el tamaño
 por `devicePixelRatio`, aplica `ctx.scale(dpr, dpr)` y devuelve
 `{ ctx, w, h }` en píxeles CSS. Devuelve `null` si el canvas no existe o tiene
 tamaño 0.
 
-### `drawCharts()` — línea 1269
+### `drawCharts()` — línea 1198
 
 Gráfica principal eléctrica (`#chartElec`) y orquesta el resto:
 
@@ -590,23 +575,24 @@ Gráfica principal eléctrica (`#chartElec`) y orquesta el resto:
 - Línea verde de FP (escala ×0,5) y línea azul de importación de red.
 - Línea vertical discontinua de "ahora" en `hour + minute/60`.
 - Al final llama a `drawBarChart('chartWater', ...)`,
-  `drawBarChart('chartThermal', ...)` y a `drawChartGeneration()` y
-  `drawChartZonas()`.
+  `drawBarChart('chartThermal', ...)`, a `drawChartGeneration()` y
+  `drawChartZonas()`, y pinta la crosshair si hay hover
+  (`dibujarCrosshair('chartElec')`).
 
-### `drawChartGeneration()` — línea 1368
+### `drawChartGeneration()` — línea 1297
 
 Gráfica de líneas de generación (`#chartGeneration`): serie solar continua
 (`#facc15`) y serie diésel discontinua (`#fb923c`) a partir de
 `obtenerDatosHora(i).solar/.diesel`, con eje, rejilla y marcador de hora.
 Incluye la función auxiliar interna `dibujarLinea(datos, color, guiones)`.
 
-### `drawChartZonas()` — línea 1430
+### `drawChartZonas()` — línea 1359
 
 Barras agrupadas por zona (`#chartZonas`): 4 barras por zona (eléctrica, agua
 ÷10, térmica y generación) con icono y nombre debajo. Si el ancho es menor que
 560 px abrevia los nombres (`Dormitorio` → `Dorm`, etc.).
 
-### `drawBarChart(canvasId, baseData, apData, colorBase, colorAp, colorAlert, alertThreshold, currentValue)` — línea 1498
+### `drawBarChart(canvasId, baseData, apData, colorBase, colorAp, colorAlert, alertThreshold, currentValue)` — línea 1427
 
 Gráfica de barras apiladas reutilizable (agua y térmico):
 
@@ -614,18 +600,60 @@ Gráfica de barras apiladas reutilizable (agua y térmico):
   hora todavía no se ha simulado o `apData[h]` si ya lo está.
 - Barras apiladas base + aparatos; color de alerta cuando supera
   `alertThreshold` (90 L/h en agua).
-- Horas futuras en translúcido y marcador de "ahora".
+- Horas futuras en translúcido y marcador de "ahora"; al final pinta la
+  crosshair (`dibujarCrosshair(canvasId)`).
+
+### `chartGeom(w, h, padL = 40, padB = 25)` — línea 1193
+
+Geometría compartida por las gráficas horarias: devuelve
+`{ padL, padR: 15, padT: 15, padB, cw: w − padL − padR, ch: h − padT − padB }`.
+Usada por `drawCharts()`, `drawChartGeneration()`, `drawBarChart()` y por la
+crosshair, para que el área de trazado sea idéntica en dibujo y en lectura.
+
+### Crosshair y tooltip de las gráficas horarias
+
+Al pasar el ratón por las 4 gráficas de 24 h (`chartElec`, `chartGeneration`,
+`chartWater`, `chartThermal`) se dibuja una cruz (línea vertical en la hora,
+horizontal en el valor y punto en la intersección) y aparece un tooltip con la
+hora, el estado (`Simulado`/`Actual`/`Proyectado`) y las magnitudes de esa hora.
+La comparativa por zona (`chartZonas`) no es horaria, así que queda fuera.
+
+Cada una de las 4 gráficas tiene un `div.chart-tip` hermano del canvas
+(`#chartElec-tip`, `#chartGeneration-tip`, `#chartWater-tip`,
+`#chartThermal-tip`), oculto con `hidden` mientras no hay hover. El estilo está
+en `css/styles.css` (`.chart-tip`, `.tip-h`, `.tip-row`, `.tip-k`, `.tip-v`,
+`.tip-estado`).
+
+- `state.chartHoverHour` — hora bajo el ratón (`null` si no la hay). Se añade
+  al estado en la inicialización.
+- `CHART_CONFIGS` — mapa `id de canvas → { geom, max, datos }` para las 4
+  gráficas horarias: `geom` reaprovecha `chartGeom`, `max` calcula el máximo del
+  eje igual que su función de dibujo, y `datos(h)` devuelve
+  `{ estado, filas: [[etiqueta, valor, color, decimales?, sufijo?]] }` leyendo
+  `obtenerDatosHora(h)` o los arrays horarios de agua/térmico.
+- `chartHoverGeom(chartId)` — resuelve la geometría y el máximo del canvas en
+  píxeles CSS (usa `getBoundingClientRect`), o `null` si no está visible.
+- `dibujarCrosshair(chartId)` — al final de cada función de dibujo repinta la
+  cruz sobre el canvas (reaprovecha su contexto y su `dpr`).
+- `actualizarTooltip()` — recorre `CHART_CONFIGS`, rellena el `innerHTML` del
+  tooltip de la gráfica bajo el ratón y lo posiciona junto al cursor sin salirse
+  del lienzo. Se oculta al no haber hover o al cambiar de pestaña.
+- `initChartCrosshair()` — registra `mousemove`/`mouseleave` en los 4 canvas
+  (se llama una vez al iniciar). Convierte la posición del ratón en hora
+  (0–23) dentro del área `padL…padL+cw`; al cambiar de hora repinta con
+  `drawCharts()` y refresca el tooltip. Al salir del canvas limpia la hora y
+  oculta el tooltip.
 
 ---
 
 ## 13. Bucle y reset
 
-### Globales de bucle (líneas 1577–1579)
+### Globales de bucle (líneas 1635–1637)
 
 `lastTick` (último `requestAnimationFrame`), `accumMinutos` (acumulado fraccionado)
 y `ultimaActualizacionUI` (throttling de la UI a 250 ms).
 
-### `loop(now)` — línea 1580
+### `loop(now)` — línea 1638
 
 Bucle principal con `requestAnimationFrame`:
 
@@ -637,7 +665,19 @@ Bucle principal con `requestAnimationFrame`:
 - Si no reproduce: vacía el acumulador (para que al reanudar no salte tiempo).
 - Siempre reprograma `requestAnimationFrame(loop)`.
 
-### `resetAll()` — línea 1621
+### `solicitarReset()`, `cancelarReset()`, `confirmarReset()` — línea 1679
+
+Popup de confirmación del botón **«Reiniciar día»** (modal propio
+`#resetModal`, no `confirm()` nativo):
+
+- `solicitarReset()` — abre el modal (`hidden = false`) y enfoca «Seguir como
+  está». El texto advierte de que se pierde todo el progreso del día.
+- `cancelarReset()` — lo cierra sin tocar la simulación. También se cierra con
+  **Escape** (listener global en la inicialización) o haciendo clic fuera de la
+  caja.
+- `confirmarReset()` — cierra el modal y ejecuta `resetAll()`.
+
+### `resetAll()` — línea 1693
 
 Reinicia el día completo: reloj a 00:00, pausa, todos los arrays horarios a 0
 (`fp` a 0,95), todos los acumuladores diarios a 0, y cada aparato a su estado
@@ -651,7 +691,7 @@ se mantiene). Resetea el botón de play y repinta.
 
 ## 14. Lectura de datos por hora
 
-### `obtenerDatosHora(h)` — línea 1680 · **fuente única de verdad**
+### `obtenerDatosHora(h)` — línea 1752 · **fuente única de verdad**
 
 Devuelve un objeto con todos los valores de la hora `h`, resolviendo de dónde
 sale cada dato:
@@ -675,27 +715,27 @@ Lo consumen: `updateDayBar()`, `updateStats()`, `drawCharts()`,
 
 ## 15. Exportaciones
 
-### `exportarCSV()` — línea 1744
+### `exportarCSV()` — línea 1816
 
 Genera 24 filas (una por hora) con 23 columnas —hora, estado, potencias,
 energías, FP, agua, térmica, gasóleo— más un bloque de "Resumen diario".
 Usa `;` como separador y llama a `descargarArchivo()` con el nombre
 `smart_home_24h.csv`.
 
-### `descargarArchivo(contenido, nombre, tipo)` — línea 1779
+### `descargarArchivo(contenido, nombre, tipo)` — línea 1851
 
 Helper común: crea un `Blob` con BOM `\uFEFF` (para que Excel abra bien los
 acentos), genera una URL temporal, la descarga con un `<a>` temporal y libera
 tanto el nodo como el `objectURL`.
 
-### `filasRegistroEncendidos()` — línea 1791
+### `filasRegistroEncendidos()` — línea 1863
 
 Helper común de las dos exportaciones a Excel: recorre `tramosAparato()` de
 todos los equipos, calcula duración (minutos, con el tramo en curso redondeado
 a la hora actual), y devuelve una fila por encendido (`num`, `desde`, `hasta`,
 `duracion`, `energia`, `agua`, `termica`) **ordenada por hora de encendido**.
 
-### `exportarExcelMultiHoja()` — línea 1815
+### `exportarExcelMultiHoja()` — línea 1887
 
 Genera un `.xls` real en **SpreadsheetML XML** con 5 hojas:
 
@@ -710,7 +750,7 @@ Genera un `.xls` real en **SpreadsheetML XML** con 5 hojas:
 Incluye `<Styles>` con cabecera invertida. Se descarga como
 `smart_home_datos.xls`.
 
-### `exportarExcelConGraficos()` — línea 1992 (async)
+### `exportarExcelConGraficos()` — línea 2064 (async)
 
 Exporta `.xlsx` real con **ExcelJS** (cargado por CDN). Pasos:
 
@@ -730,17 +770,20 @@ Exporta `.xlsx` real con **ExcelJS** (cargado por CDN). Pasos:
 
 Funciones anidadas (solo visibles dentro del exportador):
 
-- `canvasToBase64(canvasId)` — línea 2147: copia el canvas a uno temporal con
+- `canvasToBase64(canvasId)` — línea 2084: copia el canvas a uno temporal con
   fondo `#1e293b` y devuelve el PNG en base64 sin prefijo `data:`.
-- `addImageSheet(name, canvasId)` — línea 2160: crea una hoja, inserta la
+- `addImageSheet(name, canvasId)` — línea 2097: crea una hoja, inserta la
   imagen a 720×400 px en la celda `0.5/0.5`.
 
 ---
 
-## 16. Inicialización (líneas 2197–2206)
+## 16. Inicialización (líneas 2269–2286)
 
 ```js
-window.addEventListener('resize', ...)  // repinta gráficas si la pestaña está abierta
+window.addEventListener('resize', ...)  // repinta gráficas y tooltip si la pestaña está abierta
+document.addEventListener('keydown', ...)  // Escape cierra el modal de reinicio
+initChartCrosshair()  // mousemove/mouseleave en las 4 gráficas horarias
+localStorage.removeItem(CLAVE_DISTRIBUCION)  // borra el historial heredado
 state.aparatoSeleccionado = CATALOGO[0].id
 state.plantaActiva = ...planta del seleccionado
 generarPerfilesBase()
@@ -752,6 +795,7 @@ requestAnimationFrame(loop)
 Orden de arranque completo al cargar la página:
 
 1. `zonas.js` declara los datos.
-2. `app.js` crea instancias → `cargarDistribucion()` (restaura posiciones).
+2. `app.js` crea las instancias originales desde `CATALOGO` y borra la clave
+   heredada de `localStorage` (la app no persiste nada).
 3. Selección inicial, perfiles base aleatorios, primer render y primer pintado.
 4. Arranca el bucle de animación (en pausa hasta pulsar "▶ Iniciar día").

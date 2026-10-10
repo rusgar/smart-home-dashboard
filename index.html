@@ -18,13 +18,13 @@
 
 <div class="toolbar" aria-label="Controles de simulación">
   <button class="btn-play" id="btnPlay" onclick="togglePlay()">▶ Iniciar día</button>
-  <button class="btn-reset" onclick="resetAll()">Reiniciar día</button>
+  <button class="btn-reset" onclick="solicitarReset()">Reiniciar día</button>
   <span class="toolbar-label">Velocidad:</span>
   <button class="btn-speed active" onclick="setSpeed(1, this)">1 min/s</button>
   <button class="btn-speed" onclick="setSpeed(5, this)">5 min/s</button>
   <button class="btn-speed" onclick="setSpeed(15, this)">15 min/s</button>
   <button class="btn-speed" onclick="setSpeed(60, this)">1 h/s</button>
-  <button class="btn-auto" id="btnAuto" onclick="toggleAutoSim()" aria-pressed="false" title="Enciende y apaga equipos solos con horarios realistas">🎲 Auto</button>
+  <button class="btn-auto" id="btnAuto" onclick="toggleAutoSim()" aria-pressed="false" title="Modo de pruebas: enciende y apaga equipos solo y gestiona el diésel. No usar durante la práctica.">🎲 Auto (pruebas)</button>
   <span class="toolbar-label slider-label">Hora:</span>
   <input type="range" id="hourSlider" min="0" max="23" value="0" step="1" oninput="jumpToHour(this.value)">
   <div class="clock-display" id="clock" aria-live="off">00:00</div>
@@ -60,6 +60,11 @@
       </article>
 
       <aside class="sidebar">
+        <article class="card active-card">
+          <h2>Aparatos activos ahora</h2>
+          <div class="active-list" id="activeList">Ninguno activo</div>
+        </article>
+
         <article class="card inspector-card">
           <h2>Activo seleccionado</h2>
           <div id="emptyInspector" class="empty-inspector">👆 Selecciona un equipo del plano (o un activo energético) para ver aquí sus datos y controles.</div>
@@ -109,15 +114,9 @@
             </div>
 
             <div class="inspector-actions">
-              <button id="inspectorDuplicate" class="btn-secondary" onclick="duplicarAparatoSeleccionado()">Duplicar</button>
               <button id="inspectorDelete" class="btn-danger" onclick="eliminarAparatoSeleccionado()">Eliminar</button>
             </div>
           </div>
-        </article>
-
-        <article class="card">
-          <h2>Aparatos activos ahora</h2>
-          <div class="active-list" id="activeList">Ninguno activo</div>
         </article>
       </aside>
     </div>
@@ -257,7 +256,7 @@
     <div class="grid-charts">
       <div class="card">
         <h2><span class="icon">📈</span> Eléctrico · 24h</h2>
-        <div class="chart-container"><canvas id="chartElec"></canvas></div>
+        <div class="chart-container"><canvas id="chartElec"></canvas><div class="chart-tip" id="chartElec-tip" hidden></div></div>
         <div class="legend">
           <span><span class="color-box" style="background:#334155"></span> Base casa (kW)</span>
           <span><span class="color-box" style="background:#fbbf24"></span> Electrodomésticos (kW)</span>
@@ -280,7 +279,7 @@
 
       <div class="card generation-chart-card">
         <h2><span class="icon">☀️</span> Solar y diésel · 24h</h2>
-        <div class="chart-container"><canvas id="chartGeneration"></canvas></div>
+        <div class="chart-container"><canvas id="chartGeneration"></canvas><div class="chart-tip" id="chartGeneration-tip" hidden></div></div>
         <div class="legend">
           <span><span class="color-box" style="background:#facc15"></span> Solar (kW)</span>
           <span><span class="color-box" style="background:#fb923c"></span> Diésel (kW)</span>
@@ -297,7 +296,7 @@
 
       <div class="card">
         <h2><span class="icon">📊</span> Hídrico · 24h</h2>
-        <div class="chart-container"><canvas id="chartWater"></canvas></div>
+        <div class="chart-container"><canvas id="chartWater"></canvas><div class="chart-tip" id="chartWater-tip" hidden></div></div>
         <div class="legend">
           <span><span class="color-box" style="background:#38bdf8"></span> Base</span>
           <span><span class="color-box" style="background:#0ea5e9"></span> Aparatos</span>
@@ -312,7 +311,7 @@
 
       <div class="card">
         <h2><span class="icon">🔥</span> Térmico · 24h</h2>
-        <div class="chart-container"><canvas id="chartThermal"></canvas></div>
+        <div class="chart-container"><canvas id="chartThermal"></canvas><div class="chart-tip" id="chartThermal-tip" hidden></div></div>
         <div class="stat-mini">
           <div><span class="v" id="statThermMax">0</span><span class="l">Pico kW</span></div>
           <div><span class="v" id="statThermAvg">0</span><span class="l">Media kW</span></div>
@@ -334,6 +333,17 @@
     </div>
   </section>
 </main>
+
+<div class="modal-overlay" id="resetModal" hidden onclick="if (event.target === this) cancelarReset()">
+  <div class="modal-box" role="alertdialog" aria-modal="true" aria-labelledby="resetModalTitle" aria-describedby="resetModalText">
+    <h3 id="resetModalTitle">¿Reiniciar el día?</h3>
+    <p id="resetModalText">Si continúas se perderá todo el progreso del día: el reloj volverá a las 00:00 y se borrarán contadores, energías, tramos horarios y ciclos de todos los equipos. Esta acción no se puede deshacer.</p>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="resetCancel" onclick="cancelarReset()">Seguir como está</button>
+      <button class="btn-reset" id="resetConfirm" onclick="confirmarReset()">Sí, reiniciar</button>
+    </div>
+  </div>
+</div>
 
 <script src="js/zonas.js"></script>
 <script src="js/app.js"></script>
